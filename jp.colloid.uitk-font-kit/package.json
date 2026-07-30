@@ -1,0 +1,21 @@
+{
+  "name": "jp.colloid.uitk-font-kit",
+  "version": "0.1.0",
+  "displayName": "UITK Font Kit",
+  "description": "Font utilities for Unity UI Toolkit editor UIs: safe monospace and CJK UI font resolution, inline/inherited application helpers and text hygiene. Built from empirically verified TextCore behavior on 2022.3. Zero dependencies, Editor-first.",
+  "unity": "2022.3",
+  "license": "MIT",
+  "author": {
+    "name": "colloid"
+  },
+  "keywords": [
+    "uitk",
+    "ui-toolkit",
+    "uielements",
+    "font",
+    "textcore",
+    "cjk",
+    "japanese",
+    "editor"
+  ]
+}

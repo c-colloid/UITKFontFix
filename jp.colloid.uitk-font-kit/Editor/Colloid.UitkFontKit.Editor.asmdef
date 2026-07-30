@@ -1,0 +1,18 @@
+{
+    "name": "Colloid.UitkFontKit.Editor",
+    "rootNamespace": "Colloid.UitkFontKit",
+    "references": [
+        "Colloid.UitkFontKit"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
