@@ -38,17 +38,28 @@ namespace Colloid.UitkFontKit.Tests
         public void BuildReport_IsStrictAscii()
         {
             string report = FontKitDiagnostics.BuildReport();
+            // Kit-authored report content must stay ASCII so it can be
+            // pasted anywhere. Resolved OBJECT names (Font.name /
+            // FontAsset.name) are assigned by the engine/OS and are
+            // deliberately surfaced as-is, so they are excluded from the
+            // guard rather than constrained by it.
+            report = RemoveEngineAssignedName(report,
+                FontKit.EditorMonoFont != null ? FontKit.EditorMonoFont.name : null);
+            report = RemoveEngineAssignedName(report,
+                FontKit.CjkUiFontAsset != null ? FontKit.CjkUiFontAsset.name : null);
             for (int i = 0; i < report.Length; i++)
             {
-                // Font names and OS candidate lists are our own ASCII
-                // configuration; the report as a whole must stay ASCII so
-                // it can be pasted anywhere (except when an OS reports a
-                // localized font name, which we surface as-is -- hence
-                // this guard runs with default settings only).
                 Assert.LessOrEqual((int)report[i], 0x7F,
                     "non-ASCII char at index " + i + ": U+"
                     + ((int)report[i]).ToString("X4"));
             }
+        }
+
+        private static string RemoveEngineAssignedName(string report, string name)
+        {
+            // string.Replace throws on an empty search value, and a
+            // nameless object has nothing to remove anyway.
+            return string.IsNullOrEmpty(name) ? report : report.Replace(name, "");
         }
 
         [Test]
