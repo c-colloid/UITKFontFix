@@ -110,6 +110,33 @@ Measured on Unity 2022.3.22f1 / Windows 11 / Japanese locale
     FontAsset creation works. The test suite is built around exactly
     this split.
 
+## Unity version compatibility
+
+Primary target is 2022.3 LTS (every ground-truth item above was measured
+there). All version-sensitive TextCore/UI Toolkit calls are concentrated
+in the internal `FontShims` seam. Research as of 2026-07-30 found
+`FontDefinition.FromSDFFont` documented unchanged from 2022.1 through
+6000.x (a rename to `FromSDFFontAsset` could NOT be confirmed anywhere);
+should a rename ever ship, define `UITK_FONT_KIT_FROMSDFFONTASSET`
+(script define or asmdef versionDefines) or edit `FontShims` -- callers
+never change.
+
+## Migrating from UnityAgentPanel's internal FontLoader
+
+This package is the generalized extraction of
+`Colloid.AgentPanel.UI.FontLoader` / `IconLoader`. Mapping:
+
+| UnityAgentPanel | UITK Font Kit |
+| --- | --- |
+| `FontLoader.MonoFont` / `MonoFontSource` | `FontKit.EditorMonoFont` / `EditorMonoFontSource` |
+| `FontLoader.JapaneseUiFontAsset` / `JapaneseUiFontSource` | `FontKit.CjkUiFontAsset` / `CjkUiFontSource` (source prefix `osasset:` unchanged) |
+| `FontLoader.ApplyMono` | `FontKit.ApplyMono` |
+| `FontLoader.ApplyJapaneseUi` | `FontKit.ApplyCjkUi` |
+| `IconLoader.StripVariationSelectors` | `FontKit.StripVariationSelectors` (or `TextSanitizer` directly) |
+| `IconLoader.SafeGlyphCodepoints` / `IsSafeGlyphCodepoint` | `SafeGlyphs.DefaultCodepoints` / `IsSafeCodepoint` |
+| `GlyphAuditTests` source-scan internals | `GlyphAudit.AuditSourceDirectory` (public helper) |
+| (hardcoded candidate lists) | `FontKitSettings` overrides |
+
 ## License
 
 MIT (c) 2026 colloid
