@@ -183,9 +183,11 @@ namespace Colloid.UitkFontFix
                 + " FontAsset.CreateFontAsset instead.\n");
             sb.Append("* USS cannot select OS fonts by name; assign"
                 + " style.unityFontDefinition from C#.\n");
-            sb.Append("* Strip U+FE0F/U+FE0E from model/user text"
-                + " (FontFix.StripVariationSelectors) and keep fixed UI"
-                + " strings inside the SafeGlyphs whitelist.\n");
+            sb.Append("* Sanitize model/user text before display"
+                + " (FontFix.SanitizeDisplayText): variation selectors,"
+                + " zero-width characters and non-BMP characters have no"
+                + " editor-font glyph. Keep fixed UI strings inside the"
+                + " SafeGlyphs whitelist.\n");
             sb.Append("* Do not read Application.systemLanguage from"
                 + " ScriptableObject constructors/field initializers.\n");
         }

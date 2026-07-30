@@ -15,7 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `ApplyMono(VisualElement)` (inline, wins over inheritance) and
     `ApplyCjkUi(VisualElement)` (assign on a container root to inherit).
   - `ShouldPreferCjkUi(SystemLanguage)` pure language policy.
-  - `StripVariationSelectors(string)` display-text hygiene (U+FE0F/U+FE0E).
+  - `SanitizeDisplayText(string)` lossless display-text hygiene
+    (variation selectors incl. ideographic ones, zero-width characters,
+    BOM, emoji tag characters) and the lossy
+    `SanitizeDisplayText(string, string)` overload (strip-then-replace
+    of non-BMP codepoints and unpaired surrogates).
   - `ResetCaches()` for tests and candidate-list changes.
 - `FontFixSettings` static configuration (candidate list overrides with
   cache invalidation only on real changes).
@@ -33,7 +37,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   batch-safe plain-text report builder (`FontFixDiagnostics`): resolution
   results, CJK atlas page state, candidate availability and the
   known-trap checklist.
+- Runtime `TextSanitizer` with granular ops: `StripVariationSelectors`
+  (all Unicode variation selectors, surrogate-pair-aware),
+  `StripInvisibleCharacters` (superset; the `SanitizeDisplayText`
+  default) and the lossy `ReplaceNonBmpCharacters`.
+- Two importable samples ("Editor Font Setup", "Glyph Audit Tests")
+  listed in the Package Manager Samples tab.
 - EditMode test suite covering resolution, application, settings overrides,
-  language policy, text hygiene, the safe-glyph whitelist, the glyph
-  audit and the diagnostics report, including batch-mode skip handling
-  for probes that cannot run headless.
+  language policy, text hygiene (including surrogate edge cases), the
+  safe-glyph whitelist, the glyph audit and the diagnostics report,
+  including batch-mode skip handling for probes that cannot run headless.

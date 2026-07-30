@@ -17,5 +17,17 @@
     "cjk",
     "japanese",
     "editor"
+  ],
+  "samples": [
+    {
+      "displayName": "Editor Font Setup",
+      "description": "Commented EditorWindow showing the canonical composition: language-gated ApplyCjkUi on the window root, an ApplyMono code leaf inside it, sanitized dynamic text via SanitizeDisplayText, a FontFixSettings customization snippet and a pointer to the diagnostics window.",
+      "path": "Samples~/EditorFontSetup"
+    },
+    {
+      "displayName": "Glyph Audit Tests",
+      "description": "Ready-to-adapt EditMode test that runs GlyphAudit.AuditSourceDirectory over your own editor sources, with its own UNITY_INCLUDE_TESTS-gated test asmdef and a SafeGlyphs whitelist extension via extraCodepoints.",
+      "path": "Samples~/GlyphAuditTests"
+    }
   ]
 }

@@ -8,10 +8,10 @@ namespace Colloid.UitkFontFix.Tests
     /// <summary>
     /// Guards the GlyphAudit helper AND self-audits this package's own
     /// shipped sources (Editor + Runtime) with it -- the same dogfood
-    /// guard consumer projects are meant to copy. During development a
-    /// literal U+FE0F actually slipped into a doc comment of
-    /// GlyphAudit.cs itself; the self-audit below is what catches that
-    /// class of accident from now on.
+    /// guard consumer projects are meant to copy. A variation selector
+    /// is invisible in most editors, so one can slip into a source file
+    /// completely unnoticed; the self-audit below catches that class of
+    /// accident at test time.
     /// </summary>
     public class GlyphAuditTests
     {

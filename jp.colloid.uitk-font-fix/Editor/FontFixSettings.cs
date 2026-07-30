@@ -13,9 +13,9 @@ namespace Colloid.UitkFontFix
     /// Deliberately a static class rather than a ScriptableObject: a
     /// settings asset invites reading Application.systemLanguage from
     /// constructors/field initializers, which throws during
-    /// serialization and in a real incident broke a singleton load and
-    /// the whole UI with it. Code configuration keeps the package
-    /// zero-dependency and the failure surface minimal.
+    /// serialization and can take the containing asset's load down
+    /// with it. Code configuration keeps the package zero-dependency
+    /// and the failure surface minimal.
     ///
     /// Assigning null to any property restores that property's default.
     /// </summary>

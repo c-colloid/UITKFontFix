@@ -177,12 +177,37 @@ namespace Colloid.UitkFontFix
         }
 
         /// <summary>
-        /// Removes emoji/text variation selectors (U+FE0F / U+FE0E) from
-        /// display text; see TextSanitizer.StripVariationSelectors.
+        /// Lossless display-text hygiene for model/user text before it
+        /// reaches a UI Toolkit label: strips every variation selector
+        /// (including ideographic ones), zero-width characters and the
+        /// BOM -- codepoints with no glyph in the editor fonts that
+        /// otherwise draw placeholder squares and spam per-draw console
+        /// warnings. Never removes a character that draws its own
+        /// glyph; same-instance fast path when clean; null maps to
+        /// string.Empty. Forwards to
+        /// TextSanitizer.StripInvisibleCharacters.
         /// </summary>
-        public static string StripVariationSelectors(string text)
+        public static string SanitizeDisplayText(string text)
         {
-            return TextSanitizer.StripVariationSelectors(text);
+            return TextSanitizer.StripInvisibleCharacters(text);
+        }
+
+        /// <summary>
+        /// LOSSY overload for surfaces that must stay strictly BMP:
+        /// strips invisible characters FIRST, then replaces every
+        /// supplementary-plane codepoint (emoji and other characters
+        /// the editor fonts cannot draw) and every unpaired surrogate
+        /// with <paramref name="nonBmpReplacement"/>. The order is a
+        /// behavioral guarantee: ideographic variation selectors are
+        /// supplementary-plane, so replace-before-strip would emit a
+        /// visible replacement after every selector-bearing kanji.
+        /// Passing the replacement IS the lossy opt-in; string.Empty
+        /// deletes non-BMP content, any other string substitutes it.
+        /// </summary>
+        public static string SanitizeDisplayText(string text, string nonBmpReplacement)
+        {
+            return TextSanitizer.ReplaceNonBmpCharacters(
+                TextSanitizer.StripInvisibleCharacters(text), nonBmpReplacement);
         }
 
         // -- Cache control -----------------------------------------------------

@@ -1,23 +1,22 @@
-# M1 検証手順(サンドボックス: AITemp / Unity 2022.3.22f1)
+# M1 検証手順(Windowsローカルサンドボックス / Unity 2022.3.22f1)
 
-このセッション(クラウドLinuxコンテナ)からはUnityを実行できないため、
-M1のバッチ検証は以下の手順でWindows環境から実施する。
+クラウド環境からはWindows実機に触れないため、M1のバッチ検証は以下の手順で
+ローカルのWindows環境から実施する。
 
 ## 前提
 
-- サンドボックス: `C:\Unity\UnityProjects\AITemp`(2022.3.22f1、既存)
-- 既存の `jp.colloid.unity-agent-panel` ジャンクションと共存させる(触らない)
+- 検証用サンドボックスプロジェクト(2022.3.22f1、以下 `<sandbox>` と表記)
+- 同じサンドボックスに他のローカルパッケージがジャンクションされている場合は
+  共存させ、そちらには触れない
 - 同一プロジェクトへの同時2インスタンス起動禁止
 
 ## 手順
 
-1. リポジトリを `C:\Users\colloid\Dev\UITKFontFix` 等にクローンし、
-   ブランチ `claude/uitk-font-kit-dev-t0o23n` をチェックアウト
-   (ブランチ名は改名前の名残。実在するブランチ名がこれ)
+1. リポジトリをローカルにクローンし、対象ブランチをチェックアウト
 2. ジャンクション作成(管理者不要):
 
    ```
-   mklink /J C:\Unity\UnityProjects\AITemp\Packages\jp.colloid.uitk-font-fix ^
+   mklink /J <sandbox>\Packages\jp.colloid.uitk-font-fix ^
        <repo>\jp.colloid.uitk-font-fix
    ```
 
@@ -25,8 +24,8 @@ M1のバッチ検証は以下の手順でWindows環境から実施する。
 
    ```
    & "C:\Program Files\Unity\Hub\Editor\2022.3.22f1\Editor\Unity.exe" `
-       -batchmode -quit -projectPath C:\Unity\UnityProjects\AITemp `
-       -logFile C:\Unity\UnityProjects\AITemp\Logs\uitkfontfix-compile.log
+       -batchmode -quit -projectPath <sandbox> `
+       -logFile <sandbox>\Logs\uitkfontfix-compile.log
    ```
 
    ログに `CompilerOutput` エラーが無いこと。
@@ -35,10 +34,10 @@ M1のバッチ検証は以下の手順でWindows環境から実施する。
 
    ```
    & "C:\Program Files\Unity\Hub\Editor\2022.3.22f1\Editor\Unity.exe" `
-       -batchmode -projectPath C:\Unity\UnityProjects\AITemp `
+       -batchmode -projectPath <sandbox> `
        -runTests -testPlatform EditMode `
-       -testResults C:\Unity\UnityProjects\AITemp\Logs\uitkfontfix-results.xml `
-       -logFile C:\Unity\UnityProjects\AITemp\Logs\uitkfontfix-tests.log
+       -testResults <sandbox>\Logs\uitkfontfix-results.xml `
+       -logFile <sandbox>\Logs\uitkfontfix-tests.log
    ```
 
 5. 結果XMLで確認する期待値:
@@ -50,7 +49,7 @@ M1のバッチ検証は以下の手順でWindows環境から実施する。
      - Windows以外での `*_OnWindows` 系
    - ログ内の実測記録: `[FontFixResolveTests] mono source = editor:Fonts/RobotoMono/RobotoMono-Regular.ttf`
      となること(2022.3の期待値)
-   - UAP側のテスト(同居)がM1導入により壊れていないこと
+   - サンドボックスに同居する他パッケージのテストが壊れていないこと
 
 ## 完了条件
 

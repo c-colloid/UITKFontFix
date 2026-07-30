@@ -8,9 +8,9 @@ namespace Colloid.UitkFontFix
     /// calling Application.systemLanguage from a ScriptableObject
     /// constructor or field initializer throws (UnityException: get_
     /// systemLanguage is not allowed to be called during serialization),
-    /// which in a real incident broke a settings singleton load and took
-    /// the whole UI down with it. Callers should query the system language
-    /// once, from OnEnable or later, and pass it in.
+    /// which can break the load of the very asset being deserialized.
+    /// Query the system language once, from OnEnable or later, and pass
+    /// it in.
     /// </summary>
     public static class CjkLanguage
     {
