@@ -73,3 +73,25 @@ GT#1 により OS 動的フォントはこのプローブを事実上通過し�
   アセンブリ名等は改名後の表記になっている(内容の決定事項は当時のまま)
 - 注意: 開発ブランチ名 `claude/uitk-font-kit-dev-t0o23n` は改名前の
   命名のまま実在する
+
+## 追記2(2026-07-30): UnityCsReference 一次ソースでのシム裏取り完了
+
+ネットワークポリシー開放後、Unity-Technologies/UnityCsReference を
+blobless sparse clone(2022.3 / 2023.2 / 6000.0 ブランチ)して直接確認した。
+
+| API | 2022.3 | 2023.2 | 6000.0 |
+|---|---|---|---|
+| `FontDefinition.FromSDFFont(FontAsset)` | あり(Style/FontDefinition.cs L62) | あり(同L62) | あり(同L62) |
+| `FromSDFFontAsset` | なし | なし | なし |
+| `FontAsset.atlasPopulationMode` | あり(L161) | - | あり(L186) |
+| `FontAsset.atlasTextures` | あり(L314) | - | あり(L349) |
+| `FontAsset.CreateFontAsset(family, style, pointSize=90)` | あり(L522) | - | あり(L607) |
+
+- ファイル配置は 2022.3 `ModuleOverrides/com.unity.ui/Core/Style/` →
+  2023.2以降 `Modules/UIElements/Core/Style/` に移動しているが、API面は不変。
+  Obsolete属性も付いていない
+- 結論: GT#3 の「FromSDFFontAsset への改名」は確定的に否定。
+  `FontShims` の既定経路(無分岐 `FromSDFFont`)が全対象バージョンで正しく、
+  予約 define `UITK_FONT_FIX_FROMSDFFONTASSET` は保険として残置
+- M2レビューで「間接確認のみ」だった `atlasTextures` /
+  `atlasPopulationMode` の2022.3実在もこれで一次ソース確認済み

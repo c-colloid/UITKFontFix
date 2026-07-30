@@ -114,12 +114,13 @@ Measured on Unity 2022.3.22f1 / Windows 11 / Japanese locale
 
 Primary target is 2022.3 LTS (every ground-truth item above was measured
 there). All version-sensitive TextCore/UI Toolkit calls are concentrated
-in the internal `FontShims` seam. Research as of 2026-07-30 found
-`FontDefinition.FromSDFFont` documented unchanged from 2022.1 through
-6000.x (a rename to `FromSDFFontAsset` could NOT be confirmed anywhere);
-should a rename ever ship, define `UITK_FONT_FIX_FROMSDFFONTASSET`
-(script define or asmdef versionDefines) or edit `FontShims` -- callers
-never change.
+in the internal `FontShims` seam. Verified against the UnityCsReference
+sources (2026-07-30): `FontDefinition.FromSDFFont(FontAsset)`,
+`FontAsset.CreateFontAsset(family, style)`, `atlasPopulationMode` and
+`atlasTextures` are identical across the 2022.3, 2023.2 and 6000.0
+branches, and no `FromSDFFontAsset` rename exists anywhere. Should a
+rename ever ship, define `UITK_FONT_FIX_FROMSDFFONTASSET` (script define
+or asmdef versionDefines) or edit `FontShims` -- callers never change.
 
 ## Migrating from UnityAgentPanel's internal FontLoader
 
