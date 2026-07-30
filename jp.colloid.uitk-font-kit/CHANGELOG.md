@@ -25,6 +25,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Version seam `FontShims` with the reserved
   `UITK_FONT_KIT_FROMSDFFONTASSET` define (see design note
   `docs/design-notes/2026-07-30-uitk-font-kit-architecture.md`).
+- `GlyphAudit` source-audit helper usable from consumer test assemblies
+  (constructed-codepoint whitelist scan, variation-selector scan,
+  strict-ASCII scan) plus a self-audit test over this package's own
+  shipped sources.
+- Diagnostics window (Window > UITK Font Kit > Diagnostics) with a
+  batch-safe plain-text report builder (`FontKitDiagnostics`): resolution
+  results, CJK atlas page state, candidate availability and the
+  known-trap checklist.
 - EditMode test suite covering resolution, application, settings overrides,
-  language policy, text hygiene and the safe-glyph whitelist, including
-  batch-mode skip handling for probes that cannot run headless.
+  language policy, text hygiene, the safe-glyph whitelist, the glyph
+  audit and the diagnostics report, including batch-mode skip handling
+  for probes that cannot run headless.
