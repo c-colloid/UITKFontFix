@@ -74,15 +74,20 @@ namespace Colloid.UitkFontKit.Tests
         [Test]
         public void ResetCaches_ForcesReprobe_WithoutThrowing()
         {
-            Font before = FontKit.EditorMonoFont;
+            // Capture the SOURCE, not the Font reference: when the OS-font
+            // tier wins, ResetCaches destroys the kit-owned Font and a
+            // held reference would compare as null afterwards (Unity's
+            // overloaded == on destroyed objects), turning this into a
+            // false failure on machines where the bundled TTF is absent.
+            string sourceBefore = FontKit.EditorMonoFontSource;
+            Assert.IsNotEmpty(sourceBefore);
             Assert.DoesNotThrow(FontKit.ResetCaches);
             Font after = FontKit.EditorMonoFont;
-            Assert.IsNotNull(after);
-            // The bundled/label fonts are stable editor objects, so the
-            // re-probe should land on an equivalent (usually identical)
-            // instance; the guarantee under test is only "re-probing
-            // works and never throws".
-            Assert.AreEqual(before != null, after != null);
+            Assert.IsNotNull(after, "re-probing after ResetCaches must"
+                + " resolve again");
+            Assert.AreEqual(sourceBefore, FontKit.EditorMonoFontSource,
+                "with unchanged settings the re-probe must land on the"
+                + " same candidate");
         }
     }
 }
