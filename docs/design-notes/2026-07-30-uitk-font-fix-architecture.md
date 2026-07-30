@@ -8,7 +8,7 @@
 1. アセンブリは Runtime + Editor の2分割
 2. `FromSDFFont` 改名は**未確認** — 改名前提の `#if` 分岐は張らず、シムファイル+予約 define を単一変更点として用意
 3. `FontFixSettings` は static 設定クラス(ScriptableObject にしない)
-4. モノフォントの OS 候補は TextCore フェイスプローブでゲート(UAP 実装を踏襲)
+4. モノフォントの OS 候補は TextCore フェイスプローブでゲート(非公開の母体プロジェクトの実装を踏襲)
 
 ## 1. アセンブリ分割
 
@@ -44,7 +44,7 @@
 
 ## 4. モノフォント解決の OS 候補ゲート
 
-UAP 実装を踏襲: 編集器同梱 RobotoMono(GT#5)→ OS 単一名フォントを `FontEngine.LoadFontFace` プローブでゲート → 既定ラベルフォント。
+非公開の母体プロジェクトの実装を踏襲: 編集器同梱 RobotoMono(GT#5)→ OS 単一名フォントを `FontEngine.LoadFontFace` プローブでゲート → 既定ラベルフォント。
 
 GT#1 により OS 動的フォントはこのプローブを事実上通過しない(常に `Invalid_File`)ため、OS 候補段は
 「RobotoMono が無い将来バージョンで、かつプローブが直る環境」でのみ効く防御層である。これは意図的:

@@ -9,8 +9,7 @@ What the window demonstrates:
 - **Language gate** -- `Application.systemLanguage` is queried inside
   `CreateGUI` and passed to `FontFix.ShouldPreferCjkUi`. It is never
   read from a ScriptableObject constructor or field initializer, which
-  throws during serialization (the source comment explains the
-  incident behind this rule).
+  throws during serialization (the source comment explains why).
 - **Container root** -- `FontFix.ApplyCjkUi(rootVisualElement)`; every
   descendant inherits one Latin+CJK font, removing the patchy per-glyph
   OS fallback the editor default font produces for CJK text.

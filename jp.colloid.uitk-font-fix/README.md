@@ -365,6 +365,8 @@ of a bug-report bundle:
 using Colloid.UitkFontFix;
 using UnityEngine;
 
+// Editor code: place under an Editor folder (FontFixDiagnostics lives
+// in the editor-only assembly).
 public static class SupportBundle
 {
     public static void LogFontReport()
@@ -440,7 +442,7 @@ allocates on the clean fast path, maps null to `string.Empty`.
 | --- | --- |
 | `StripVariationSelectors(string)` | Removes every Unicode variation selector: U+FE00..U+FE0F, Mongolian FVS U+180B..U+180D and U+180F, and ideographic selectors U+E0100..U+E01EF (matched only as valid surrogate pairs). The shaping-safe granular op -- never touches ZWJ/ZWNJ. |
 | `StripInvisibleCharacters(string)` | Superset of the above: also removes zero-width space/non-joiner/joiner (U+200B..U+200D), word joiner and invisible math operators (U+2060..U+2064), the BOM (U+FEFF) and emoji tag characters (U+E0000..U+E007F). This is what `FontFix.SanitizeDisplayText` forwards to. |
-| `ReplaceNonBmpCharacters(string, string)` | **Lossy**: replaces each supplementary-plane codepoint (one replacement per surrogate pair) and each unpaired surrogate with the replacement string; the result contains no surrogate code units. For surfaces that must stay strictly BMP. |
+| `ReplaceNonBmpCharacters(string, string)` | **Lossy**: replaces each supplementary-plane codepoint (one replacement per surrogate pair) and each unpaired surrogate with the replacement string; when the replacement itself contains no surrogates, the result contains no surrogate code units. For surfaces that must stay strictly BMP. |
 
 **`CjkLanguage`**
 

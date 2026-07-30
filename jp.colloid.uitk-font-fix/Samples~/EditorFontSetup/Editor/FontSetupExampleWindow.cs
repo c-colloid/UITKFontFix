@@ -38,9 +38,9 @@ namespace UitkFontFixSamples.EditorFontSetup
         //   UnityException: get_systemLanguage is not allowed to be
         //   called during serialization
         //
-        // In a real incident that exact pattern broke a settings
-        // singleton load and took the whole UI down with it. Query the
-        // language in CreateGUI (or OnEnable) instead -- see below.
+        // A pattern like that can break the load of the very window or
+        // asset being deserialized. Query the language in CreateGUI (or
+        // OnEnable) instead -- see below.
         //
         //   // WRONG -- throws during serialization:
         //   // private bool _preferCjk =
