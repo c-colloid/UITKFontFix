@@ -15,9 +15,9 @@ M2の成果(GlyphAudit・診断ウィンドウ)の検証手順。バッチ部分
 ## 実機ビジュアル(ユーザーの起動中エディタ / uloop)
 
 1. `uloop execute-dynamic-code --code-file <cs>` で
-   `FontKitDiagnosticsWindow.Open()` 相当を呼ぶ(パッケージ導入済みなら
-   メニュー `Window/UITK Font Kit/Diagnostics` を直接開いてもよい)
-2. `uloop screenshot --window-name "Font Kit Diagnostics" --match-mode contains --output-directory <dir>`
+   `FontFixDiagnosticsWindow.Open()` 相当を呼ぶ(パッケージ導入済みなら
+   メニュー `Window/UITK Font Fix/Diagnostics` を直接開いてもよい)
+2. `uloop screenshot --window-name "Font Fix Diagnostics" --match-mode contains --output-directory <dir>`
 3. 確認観点:
    - 日本語環境でウィンドウ全体がまだら太字になっていないこと
      (ルートへの ApplyCjkUi が効いている)

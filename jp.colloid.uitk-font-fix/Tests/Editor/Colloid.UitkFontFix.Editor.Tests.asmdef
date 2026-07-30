@@ -1,0 +1,25 @@
+{
+    "name": "Colloid.UitkFontFix.Editor.Tests",
+    "rootNamespace": "Colloid.UitkFontFix",
+    "references": [
+        "Colloid.UitkFontFix",
+        "Colloid.UitkFontFix.Editor",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

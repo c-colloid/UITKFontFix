@@ -11,13 +11,14 @@ M1のバッチ検証は以下の手順でWindows環境から実施する。
 
 ## 手順
 
-1. リポジトリを `C:\Users\colloid\Dev\UitkFontKit` 等にクローンし、
+1. リポジトリを `C:\Users\colloid\Dev\UITKFontFix` 等にクローンし、
    ブランチ `claude/uitk-font-kit-dev-t0o23n` をチェックアウト
+   (ブランチ名は改名前の名残。実在するブランチ名がこれ)
 2. ジャンクション作成(管理者不要):
 
    ```
-   mklink /J C:\Unity\UnityProjects\AITemp\Packages\jp.colloid.uitk-font-kit ^
-       <repo>\jp.colloid.uitk-font-kit
+   mklink /J C:\Unity\UnityProjects\AITemp\Packages\jp.colloid.uitk-font-fix ^
+       <repo>\jp.colloid.uitk-font-fix
    ```
 
 3. コンパイル確認(同期待機・タイムアウト20分・失敗時はそのPID限定で `taskkill /T /F`):
@@ -25,7 +26,7 @@ M1のバッチ検証は以下の手順でWindows環境から実施する。
    ```
    & "C:\Program Files\Unity\Hub\Editor\2022.3.22f1\Editor\Unity.exe" `
        -batchmode -quit -projectPath C:\Unity\UnityProjects\AITemp `
-       -logFile C:\Unity\UnityProjects\AITemp\Logs\uitkfontkit-compile.log
+       -logFile C:\Unity\UnityProjects\AITemp\Logs\uitkfontfix-compile.log
    ```
 
    ログに `CompilerOutput` エラーが無いこと。
@@ -36,18 +37,18 @@ M1のバッチ検証は以下の手順でWindows環境から実施する。
    & "C:\Program Files\Unity\Hub\Editor\2022.3.22f1\Editor\Unity.exe" `
        -batchmode -projectPath C:\Unity\UnityProjects\AITemp `
        -runTests -testPlatform EditMode `
-       -testResults C:\Unity\UnityProjects\AITemp\Logs\uitkfontkit-results.xml `
-       -logFile C:\Unity\UnityProjects\AITemp\Logs\uitkfontkit-tests.log
+       -testResults C:\Unity\UnityProjects\AITemp\Logs\uitkfontfix-results.xml `
+       -logFile C:\Unity\UnityProjects\AITemp\Logs\uitkfontfix-tests.log
    ```
 
 5. 結果XMLで確認する期待値:
-   - `Colloid.UitkFontKit.Tests` 配下: 失敗0
+   - `Colloid.UitkFontFix.Tests` 配下: 失敗0
    - Skipped が許されるのは以下のみ(理由もXMLに記録される):
      - `CjkUiFontAsset_ResolvesOnWindows_AndReportsWinner`
        (ヘッドレスでDynamicOS生成が不可な環境のみ)
      - `BothInlineOnSameElement_LastWriteWins`(CJK/monoどちらかが未解決の環境のみ)
      - Windows以外での `*_OnWindows` 系
-   - ログ内の実測記録: `[FontKitResolveTests] mono source = editor:Fonts/RobotoMono/RobotoMono-Regular.ttf`
+   - ログ内の実測記録: `[FontFixResolveTests] mono source = editor:Fonts/RobotoMono/RobotoMono-Regular.ttf`
      となること(2022.3の期待値)
    - UAP側のテスト(同居)がM1導入により壊れていないこと
 
