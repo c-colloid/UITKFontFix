@@ -65,6 +65,17 @@ asmdefs adds an explicit assembly reference as usual.
 Save as `Assets/Editor/FontFixQuickStart.cs`, then open
 *Window > Font Fix Quick Start*:
 
+The window below shows the full composition end to end. First, on the
+container root, apply the Latin+CJK font so every descendant inherits
+it; reading the system language is safe here because `CreateGUI` runs
+long after serialization completes. Second, ordinary labels need no
+special handling and simply inherit the root font. Third, a code leaf
+gets the monospace font applied inline; an inline style always beats
+an inherited one, so it stays monospaced even inside the CJK
+container. Fourth, free-form text such as model output, user input,
+files or the clipboard should be sanitized before display -- only
+invisible codepoints are removed, so visible content never changes.
+
 ```csharp
 using Colloid.UitkFontFix;
 using UnityEditor;
@@ -81,27 +92,17 @@ public class FontFixQuickStart : EditorWindow
 
     public void CreateGUI()
     {
-        // 1. Container root: one Latin+CJK font that every descendant
-        //    inherits. Reading the system language is safe here --
-        //    CreateGUI runs long after serialization.
         if (FontFix.ShouldPreferCjkUi(Application.systemLanguage))
         {
             FontFix.ApplyCjkUi(rootVisualElement);
         }
 
-        // 2. Ordinary labels: nothing to do, they inherit the root font.
-        rootVisualElement.Add(new Label("Ready"));
+        rootVisualElement.Add(new Label("Ready")); // inherits the root font
 
-        // 3. Code leaf: inline mono. An inline style always beats an
-        //    inherited one, so this stays monospaced inside the CJK
-        //    container.
         var code = new Label("if (x == 0) { return; }");
         FontFix.ApplyMono(code);
         rootVisualElement.Add(code);
 
-        // 4. Free-form text (models, users, files, clipboard): sanitize
-        //    before display. Only invisible codepoints are removed --
-        //    visible content never changes.
         string raw = EditorGUIUtility.systemCopyBuffer;
         rootVisualElement.Add(new Label(FontFix.SanitizeDisplayText(raw)));
     }
@@ -117,6 +118,18 @@ are inline writes and the last one silently wins.
 ## Recipes
 
 ### 1. An editor window mixing CJK UI text and monospaced code
+
+This example builds an editor window that mixes CJK UI text with
+monospaced code. Applying one CJK-capable font to the root means
+every `Label` below it inherits that font, so Japanese, Chinese and
+Korean strings render in a single family instead of a patchy
+per-glyph OS fallback. The result label simply inherits the root
+font. In the row that follows, the message label also inherits the
+root font and stays proportional, while the adjacent code label calls
+`ApplyMono` inline, which wins locally over the inherited font. The
+multiline log body at the bottom works the same way: a single
+`ApplyMono` call on that leaf applies regardless of how deep it sits
+under the CJK root.
 
 ```csharp
 using Colloid.UitkFontFix;
@@ -136,9 +149,6 @@ public class BuildLogWindow : EditorWindow
     {
         VisualElement root = rootVisualElement;
 
-        // One CJK-capable font on the root: every Label below inherits
-        // it, so Japanese/Chinese/Korean strings render in a single
-        // family instead of a patchy per-glyph OS fallback.
         if (FontFix.ShouldPreferCjkUi(Application.systemLanguage))
         {
             FontFix.ApplyCjkUi(root);
@@ -150,34 +160,35 @@ public class BuildLogWindow : EditorWindow
         row.style.flexDirection = FlexDirection.Row;
 
         var message = new Label("Shader compilation finished ");
-        row.Add(message); // inherits: proportional UI font
+        row.Add(message);
 
         var code = new Label("ShaderLab.ParseError:0x2F");
-        FontFix.ApplyMono(code); // inline: monospaced, wins locally
+        FontFix.ApplyMono(code);
         row.Add(code);
         root.Add(row);
 
-        // A multiline log body works the same way: one ApplyMono on
-        // the leaf, regardless of how deep it sits under the CJK root.
         var log = new TextField { multiline = true, isReadOnly = true };
         log.value = "0x0042  OK\n0x0043  RETRY";
         FontFix.ApplyMono(log);
         root.Add(log);
-
-        // Rule: ApplyCjkUi on container roots, ApplyMono on leaves.
-        // Never both on the SAME element -- both are inline writes and
-        // the last one wins.
     }
 }
 ```
 
+Rule of thumb: call `ApplyCjkUi` on container roots and `ApplyMono` on
+leaves, and never call both on the same element -- both are inline
+writes, and the last call silently wins.
+
 ### 2. Language gating done safely
 
-`Application.systemLanguage` throws when read during serialization
-(constructors, field initializers) -- and one throwing field
-initializer can break an entire asset load. The policy helpers are
-therefore pure: they take the language as a parameter, and *you*
-control when it is read.
+`Application.systemLanguage` throws a `UnityException` when read
+during serialization (constructors, field initializers), and one
+throwing field initializer can break an entire asset load. The policy
+helpers are therefore pure: they take the language as a parameter,
+and *you* control when it is read; `CjkLanguage.ShouldPreferCjkUi`
+itself never reads the language. The safe pattern is to query the
+language once from `OnEnable` (or any later callback) and cache the
+result, as shown below.
 
 ```csharp
 using Colloid.UitkFontFix;
@@ -185,19 +196,15 @@ using UnityEngine;
 
 public class MyToolState : ScriptableObject
 {
-    // WRONG -- field initializers run during serialization and this
-    // throws (UnityException), potentially killing the asset load:
-    //
-    //   private bool _preferCjk =
-    //       CjkLanguage.ShouldPreferCjkUi(Application.systemLanguage);
+    // WRONG: throws during serialization
+    // private bool _preferCjk =
+    //     CjkLanguage.ShouldPreferCjkUi(Application.systemLanguage);
 
     private bool _preferCjk;
 
     private void OnEnable()
     {
-        // RIGHT: query once from OnEnable (or any later callback) and
-        // cache the result. CjkLanguage.ShouldPreferCjkUi is pure and
-        // never reads the language itself.
+        // RIGHT: query from OnEnable or later
         _preferCjk = CjkLanguage.ShouldPreferCjkUi(
             Application.systemLanguage);
     }
@@ -215,35 +222,37 @@ policy behind the facade.
 
 ### 3. Sanitizing model/user text before display
 
+The example below is editor UI code, for example under an Editor
+folder. `ShowMessage` is lossless and always safe to call: it strips
+only invisible codepoints -- variation selectors (including the
+ideographic ones), zero-width characters, the byte-order mark and
+emoji tag characters. What the user sees never changes; what stops
+happening is per-draw "not found in [Inter-Regular SDF]" warning spam
+and placeholder squares. `ShowMessageBmpOnly` is an optional, lossy
+second step for surfaces that must stay strictly within the Basic
+Multilingual Plane, since the editor fonts have no emoji-plane glyphs
+at all: every supplementary-plane character becomes a visible
+substitute instead of a placeholder square, so opt into it
+deliberately. The two-argument overload it calls composes
+strip-then-replace in the safe order -- ideographic variation
+selectors are stripped, since they are invisible, before non-BMP
+replacement, so selector-bearing kanji do not grow a stray asterisk.
+The granular operations live on `TextSanitizer` if you need them
+individually.
+
 ```csharp
 using Colloid.UitkFontFix;
 using UnityEngine.UIElements;
 
-// Editor UI code (e.g. under an Editor folder).
 public static class ChatView
 {
-    // Lossless, always safe: strips ONLY invisible codepoints --
-    // variation selectors (including ideographic ones), zero-width
-    // characters, the BOM and emoji tag characters. What the user
-    // sees never changes; what
-    // stops happening is per-draw "not found in [Inter-Regular SDF]"
-    // warning spam and placeholder squares.
     public static void ShowMessage(Label target, string rawModelText)
     {
         target.text = FontFix.SanitizeDisplayText(rawModelText);
     }
 
-    // Optional, LOSSY second step for surfaces that must stay strictly
-    // BMP (the editor fonts have no emoji-plane glyphs at all): every
-    // supplementary-plane character becomes a visible substitute
-    // instead of a placeholder square. Opt in deliberately.
     public static void ShowMessageBmpOnly(Label target, string rawModelText)
     {
-        // The overload composes strip-then-replace in the safe order:
-        // ideographic variation selectors are stripped (invisible)
-        // BEFORE non-BMP replacement, so selector-bearing kanji do not
-        // grow a stray "*". Granular ops live on TextSanitizer if you
-        // need them individually.
         target.text = FontFix.SanitizeDisplayText(rawModelText, "*");
     }
 }
@@ -256,7 +265,12 @@ when nothing needs changing, and map null to `string.Empty`.
 
 The defaults resolve a Japanese-priority chain. Products that ship
 primarily for Chinese or Korean users replace the CJK candidate list --
-code-first, no asset required:
+code-first, no asset required. The example below configures a
+Simplified-Chinese-first product: `Microsoft YaHei UI` and `Microsoft
+YaHei` cover Simplified Chinese on Windows, `Microsoft JhengHei UI`
+and `Microsoft JhengHei` cover Traditional Chinese on Windows, `Noto
+Sans CJK SC` covers Linux, and `Yu Gothic UI` is kept as a Japanese
+fallback.
 
 ```csharp
 using Colloid.UitkFontFix;
@@ -267,34 +281,35 @@ public static class MyProjectFontConfig
     [InitializeOnLoadMethod]
     private static void Configure()
     {
-        // Simplified-Chinese-first product:
         FontFixSettings.CjkUiFontNames = new[]
         {
-            "Microsoft YaHei UI", "Microsoft YaHei",       // zh-Hans, Windows
-            "Microsoft JhengHei UI", "Microsoft JhengHei", // zh-Hant, Windows
-            "Noto Sans CJK SC",                            // Linux
-            "Yu Gothic UI"                                 // ja fallback
+            "Microsoft YaHei UI", "Microsoft YaHei",
+            "Microsoft JhengHei UI", "Microsoft JhengHei",
+            "Noto Sans CJK SC",
+            "Yu Gothic UI"
         };
-
-        // Korean-first product (instead of the block above):
-        //
-        // FontFixSettings.CjkUiFontNames = new[]
-        // {
-        //     "Malgun Gothic",    // Windows
-        //     "Noto Sans CJK KR", // Linux
-        //     "Yu Gothic UI"      // ja fallback
-        // };
-
-        // Notes:
-        // - Names are probed one at a time, most preferred first, and
-        //   must be the ENGLISH family names: GetOSInstalledFontNames
-        //   reports English names even on localized Windows.
-        // - A value that actually changes invalidates the FontFix
-        //   caches automatically; re-assigning an equal value keeps
-        //   them warm. Assign null to restore the defaults.
     }
 }
 ```
+
+A Korean-first product would assign the following list instead, in
+place of the block above: `Malgun Gothic` for Windows, `Noto Sans CJK
+KR` for Linux, and `Yu Gothic UI` kept as the Japanese fallback.
+
+```csharp
+FontFixSettings.CjkUiFontNames = new[]
+{
+    "Malgun Gothic",
+    "Noto Sans CJK KR",
+    "Yu Gothic UI"
+};
+```
+
+Names are probed one at a time, most preferred first, and must be the
+English family names, since `GetOSInstalledFontNames` reports English
+names even on localized Windows. A value that actually changes
+invalidates the `FontFix` caches automatically; re-assigning an equal
+value keeps them warm, and assigning null restores the defaults.
 
 The same pattern applies to `EditorMonoFontPaths` and `OsMonoFontNames`
 for the monospace side, and `CjkUiStyleName` for the style passed to
@@ -306,34 +321,42 @@ Fixed UI strings (icons, bullets, arrows baked into your sources)
 should stick to printable ASCII plus the proven-safe `SafeGlyphs`
 whitelist. `GlyphAudit` turns that policy into a test that fails with
 the exact file and codepoint when someone bakes in a glyph the editor
-font cannot draw:
+font cannot draw. The example assumes an EditMode test assembly; in
+your test asmdef, reference both `Colloid.UitkFontFix` and
+`Colloid.UitkFontFix.Editor`.
+
+`ExtraCodepoints` holds project-specific additions to the whitelist --
+add a codepoint there only after confirming it renders in the target
+editor font, for example by putting it in a label and watching the
+console; the sample adds U+2192, RIGHTWARDS ARROW.
+`EditorSources_PassGlyphAudit` recursively scans every `*.cs` file for
+codepoints constructed outside the whitelist (`ConvertFromUtf32`,
+`(char)` casts, `\uXXXX` and `\UXXXXXXXX` escapes), variation-selector
+literals and escapes, and non-ASCII bytes; an empty list means the
+sources are clean, and offenders come back as "file: reason" strings
+so the failure message says exactly what slipped in and where.
+`GlyphStrings_UseOnlySafeCodepoints` checks individual codepoints
+directly: fixed UI strings are best assembled from codepoints at
+runtime with `char.ConvertFromUtf32` so source files stay ASCII, and
+the assertions below confirm that U+2713 (CHECK MARK) and the
+extended U+2192 pass while U+1F4CE, which is in the emoji plane, does
+not.
 
 ```csharp
 using System.Collections.Generic;
 using Colloid.UitkFontFix;
 using NUnit.Framework;
 
-// EditMode test assembly. In your test asmdef, reference
-// Colloid.UitkFontFix and Colloid.UitkFontFix.Editor.
 public class UiGlyphSafetyTests
 {
-    // Project-specific additions to the whitelist. Add a codepoint
-    // here ONLY after confirming it renders in the target editor font
-    // (a quick check: put it in a label and watch the console).
     private static readonly int[] ExtraCodepoints =
     {
-        0x2192 // RIGHTWARDS ARROW
+        0x2192
     };
 
     [Test]
     public void EditorSources_PassGlyphAudit()
     {
-        // Recursively scans *.cs for: constructed codepoints outside
-        // the whitelist (ConvertFromUtf32, (char) casts, \uXXXX and
-        // \UXXXXXXXX escapes), variation-selector literals/escapes,
-        // and non-ASCII bytes. Empty list means clean; offenders are
-        // "file: reason" strings, so the failure message says exactly
-        // what slipped in and where.
         List<string> offenders = GlyphAudit.AuditSourceDirectory(
             "Assets/Editor", ExtraCodepoints);
         Assert.IsEmpty(offenders, string.Join("\n", offenders));
@@ -342,11 +365,9 @@ public class UiGlyphSafetyTests
     [Test]
     public void GlyphStrings_UseOnlySafeCodepoints()
     {
-        // Fixed UI strings are best assembled from codepoints at
-        // runtime (char.ConvertFromUtf32) so source files stay ASCII.
-        Assert.IsTrue(SafeGlyphs.IsSafeCodepoint(0x2713));  // CHECK MARK
+        Assert.IsTrue(SafeGlyphs.IsSafeCodepoint(0x2713));
         Assert.IsTrue(SafeGlyphs.IsSafeCodepoint(0x2192, ExtraCodepoints));
-        Assert.IsFalse(SafeGlyphs.IsSafeCodepoint(0x1F4CE)); // emoji plane
+        Assert.IsFalse(SafeGlyphs.IsSafeCodepoint(0x1F4CE));
     }
 }
 ```
@@ -359,22 +380,22 @@ of its test suite.
 Open **Window > UITK Font Fix > Diagnostics** for a read-only report
 with *Re-probe* (drops caches, resolves again) and *Copy report*
 buttons. The same report is available from code -- for example as part
-of a bug-report bundle:
+of a bug-report bundle. The example below is editor code and should
+be placed under an Editor folder, since `FontFixDiagnostics` lives in
+the editor-only assembly. `BuildReport` returns a plain-text ASCII
+report covering which candidates resolved and from which tier, the
+CJK atlas state, candidate availability on this machine, and the
+known-trap checklist; it never throws and is safe to call in batch
+mode.
 
 ```csharp
 using Colloid.UitkFontFix;
 using UnityEngine;
 
-// Editor code: place under an Editor folder (FontFixDiagnostics lives
-// in the editor-only assembly).
 public static class SupportBundle
 {
     public static void LogFontReport()
     {
-        // Plain-text ASCII report: which candidates resolved (and from
-        // which tier), CJK atlas state, candidate availability on this
-        // machine, and the known-trap checklist. Never throws; safe in
-        // batch mode.
         Debug.Log(FontFixDiagnostics.BuildReport());
     }
 }
