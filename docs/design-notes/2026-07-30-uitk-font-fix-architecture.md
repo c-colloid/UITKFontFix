@@ -95,3 +95,14 @@ blobless sparse clone(2022.3 / 2023.2 / 6000.0 ブランチ)して直接確認�
   予約 define `UITK_FONT_FIX_FROMSDFFONTASSET` は保険として残置
 - M2レビューで「間接確認のみ」だった `atlasTextures` /
   `atlasPopulationMode` の2022.3実在もこれで一次ソース確認済み
+
+## 追記3(2026-07-31): 予約 define `UITK_FONT_FIX_FROMSDFFONTASSET` を撤去
+
+ユーザー決定により、`FromSDFFontAsset` 改名への保険として残していた予約 define と
+関連記述を出荷物(FontShims.cs / README / CHANGELOG)から削除した。
+
+- 根拠: 一次ソース確認(追記2)で改名は「存在しない」と確定しており、最新環境でも
+  APIは不変。存在しないAPIへの分岐・説明は利用者にとってノイズでしかない
+- `FontShims` 自体は「バージョン差の可能性がある呼び出しを1ファイルに集約する」
+  継ぎ目として存続(将来実際に差が生じた場合の修正点は変わらず1ファイル)
+- 本ノートの上記セクション(選択肢評価・調査記録)は当時の判断記録として保持

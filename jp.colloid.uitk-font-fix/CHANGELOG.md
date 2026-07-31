@@ -26,9 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Runtime assembly (`Colloid.UitkFontFix`) with pure utilities:
   `TextSanitizer`, `CjkLanguage`, `SafeGlyphs`, `FontFixDefaults` --
   the structural seed for the v2 runtime support.
-- Version seam `FontShims` with the reserved
-  `UITK_FONT_FIX_FROMSDFFONTASSET` define (see design note
-  `docs/design-notes/2026-07-30-uitk-font-fix-architecture.md`).
+- Internal version seam `FontShims` concentrating every
+  version-sensitive TextCore/UI Toolkit call (APIs verified identical
+  across the 2022.3/2023.2/6000.0 UnityCsReference branches; no
+  version branching needed).
 - `GlyphAudit` source-audit helper usable from consumer test assemblies
   (constructed-codepoint whitelist scan, variation-selector scan,
   strict-ASCII scan) plus a self-audit test over this package's own

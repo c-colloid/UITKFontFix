@@ -560,11 +560,9 @@ single internal seam (`FontShims`). Verification against the
 UnityCsReference sources: `FontDefinition.FromSDFFont(FontAsset)`,
 `FontAsset.CreateFontAsset(family, style)`, `atlasPopulationMode` and
 `atlasTextures` are identical across the 2022.3, 2023.2 and 6000.0
-branches, and no `FromSDFFontAsset` rename exists in any of them.
-Should such a rename ever ship in a future Unity version, define
-`UITK_FONT_FIX_FROMSDFFONTASSET` (Scripting Define Symbols, or
-`versionDefines` on the package asmdef) to flip the call site --
-callers never change.
+branches, so the package needs no version branching; if a future Unity
+version ever changes one of these APIs, the fix is contained to that
+one file.
 
 ## Samples
 

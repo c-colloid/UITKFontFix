@@ -3,18 +3,13 @@ using UnityEngine.UIElements;
 namespace Colloid.UitkFontFix
 {
     /// <summary>
-    /// Single seam for TextCore/UI Toolkit API differences between Unity
-    /// majors. Keep EVERY version-sensitive call in this file so a future
-    /// rename costs a one-file change.
-    ///
-    /// Research record (2026-07-30): FontDefinition.FromSDFFont(
-    /// TextCore.Text.FontAsset) is documented from 2022.1 through the
-    /// 6000.x Scripting API; a rename to "FromSDFFontAsset" could NOT be
-    /// confirmed in any official documentation. The reserved define below
-    /// exists so that if such a rename ever ships, consumers (or this
-    /// package's versionDefines) can flip the call site without editing
-    /// callers. See docs/design-notes/2026-07-30-uitk-font-fix-
-    /// architecture.md in the repository for the full evaluation.
+    /// Single seam for the TextCore/UI Toolkit calls that could differ
+    /// between Unity majors: keeping every such call in this file makes
+    /// any future API change a one-file fix. Verified against the
+    /// UnityCsReference sources (2022.3, 2023.2 and 6000.0 branches):
+    /// FontDefinition.FromSDFFont(FontAsset) and
+    /// FontAsset.CreateFontAsset(family, style) are identical across
+    /// all of them, so no version branching is needed today.
     /// </summary>
     internal static class FontShims
     {
@@ -25,11 +20,7 @@ namespace Colloid.UitkFontFix
         internal static FontDefinition DefinitionFromFontAsset(
             UnityEngine.TextCore.Text.FontAsset asset)
         {
-#if UITK_FONT_FIX_FROMSDFFONTASSET
-            return FontDefinition.FromSDFFontAsset(asset);
-#else
             return FontDefinition.FromSDFFont(asset);
-#endif
         }
 
         /// <summary>
