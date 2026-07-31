@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: EditMode tests (Unity 2022.3.22f1)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Library
+        uses: actions/cache@v4
+        with:
+          path: ci/TestProject/Library
+          key: Library-2022.3.22f1-${{ hashFiles('jp.colloid.uitk-font-fix/**/*.asmdef', 'ci/TestProject/Packages/manifest.json') }}
+          restore-keys: |
+            Library-2022.3.22f1-
+
+      - name: Run EditMode tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          projectPath: ci/TestProject
+          unityVersion: 2022.3.22f1
+          testMode: editmode
+          artifactsPath: test-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: EditMode test results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results
+
+  release:
+    name: Tag and release on version change
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create release when the package version has no tag yet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="$(jq -r .version jp.colloid.uitk-font-fix/package.json)"
+          TAG="v${VERSION}"
+          echo "package version: ${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} already exists; nothing to release"
+            exit 0
+          fi
+          gh release create "${TAG}" \
+            --target "${GITHUB_SHA}" \
+            --title "UITK Font Fix ${VERSION}" \
+            --generate-notes \
+            --notes "UPM install (version pinned): https://github.com/${GITHUB_REPOSITORY}.git?path=jp.colloid.uitk-font-fix#${TAG} -- changes: https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/jp.colloid.uitk-font-fix/CHANGELOG.md"

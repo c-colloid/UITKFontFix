@@ -1,0 +1,9 @@
+# Unity-generated state for the CI test project (regenerated per run).
+Library/
+Logs/
+Temp/
+UserSettings/
+obj/
+*.csproj
+*.sln
+Assets/*.meta
