@@ -40,3 +40,25 @@
   `pull_request_target` 等を別途設計する)
 - `ci/TestProject` はコンテナのLinux Unityで実コンパイル+テストを通してから
   コミットする(CIと同一構成の事前検証)
+
+## 追記(2026-07-31): GameCIアクションを廃し、Licensing Client直叩きに変更
+
+初版CI(run #1)は `game-ci/unity-test-runner@v4` を採用したが、実行ログで
+即時失敗を確認:
+
+```
+Missing Unity License File and no Serial was found.
+```
+
+- 根本原因: 同アクションの事前検証は **UNITY_LICENSE(ULF)または UNITY_SERIAL
+  が必須**で、メール+パスワードのみの認証活性化に非対応。PersonalのULF新規取得は
+  廃止済み・他マシンULFはバインディング不一致(本コンテナで実証)のため、
+  Personal+シークレット2件という前提とアクションの要求が両立しない
+- 対応: `unityci/editor:ubuntu-2022.3.22f1-base-3` コンテナ上の自前ステップに変更。
+  Licensing Client `--activate-all --include-personal`(認証)→ `-runTests`
+  (EditMode)→ `--deactivate-all`(シート返却、`if: always()`)。
+  活性化・返却・再取得のサイクルは本コンテナで動作検証済み
+- テスト失敗はUnityの終了コード(0=成功)でステップが自然に失敗する。
+  results.xml/ログはartifactとして常時アップロード
+- 残る未検証点: GitHub Actionsランナー上でのエンドツーエンド実行のみ
+  (シークレット登録後の初回runで確定する)
