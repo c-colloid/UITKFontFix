@@ -1,0 +1,48 @@
+# タグ push (v*) でパッケージ zip を作り GitHub Release に添付する。
+# zip はパッケージ内容(jp.colloid.uitk-font-fix/ の中身)がルートに来る VPM 形式。
+# アセット命名は VPM リスティング(c-colloid/vpm)の収集規約に合わせる:
+#   package.json + {name}-{version}.zip
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag matches package.json version
+        id: version
+        run: |
+          VERSION=$(jq -r .version jp.colloid.uitk-font-fix/package.json)
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::tag v$TAG does not match package.json version $VERSION"
+            exit 1
+          fi
+
+      - name: Build package zip
+        run: |
+          NAME=$(jq -r .name jp.colloid.uitk-font-fix/package.json)
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP="$NAME-$VERSION.zip"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          (cd jp.colloid.uitk-font-fix && zip -r "/tmp/$ZIP" .)
+          mv "/tmp/$ZIP" "$ZIP"
+          unzip -l "$ZIP" | head -20
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ZIP }}
+            jp.colloid.uitk-font-fix/package.json
+          generate_release_notes: true
