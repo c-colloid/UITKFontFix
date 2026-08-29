@@ -84,19 +84,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # VPM リスティング(c-colloid/vpm)の収集規約に合わせ、リリースには
+      # package.json と {name}-{version}.zip(パッケージ内容がルートの VPM 形式)を添付する。
+      # 既存リリースにアセットが無い場合は追補する(パッケージ変更はバージョンを上げる前提)。
       - name: Create release when the package version has no tag yet
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="$(jq -r .version jp.colloid.uitk-font-fix/package.json)"
+          NAME="$(jq -r .name jp.colloid.uitk-font-fix/package.json)"
           TAG="v${VERSION}"
+          ZIP="${NAME}-${VERSION}.zip"
           echo "package version: ${VERSION}"
+          (cd jp.colloid.uitk-font-fix && zip -r "/tmp/${ZIP}" . > /dev/null)
+          mv "/tmp/${ZIP}" "${ZIP}"
           if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
-            echo "tag ${TAG} already exists; nothing to release"
+            if gh release view "${TAG}" --json assets -q '.assets[].name' | grep -qx "${ZIP}"; then
+              echo "tag ${TAG} already exists with VPM assets; nothing to release"
+              exit 0
+            fi
+            echo "tag ${TAG} exists without VPM assets; backfilling"
+            gh release upload "${TAG}" "${ZIP}" "jp.colloid.uitk-font-fix/package.json" --clobber
             exit 0
           fi
           gh release create "${TAG}" \
             --target "${GITHUB_SHA}" \
             --title "UITK Font Fix ${VERSION}" \
             --generate-notes \
-            --notes "UPM install (version pinned): https://github.com/${GITHUB_REPOSITORY}.git?path=jp.colloid.uitk-font-fix#${TAG} -- changes: https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/jp.colloid.uitk-font-fix/CHANGELOG.md"
+            --notes "UPM install (version pinned): https://github.com/${GITHUB_REPOSITORY}.git?path=jp.colloid.uitk-font-fix#${TAG} -- changes: https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/jp.colloid.uitk-font-fix/CHANGELOG.md" \
+            "${ZIP}" "jp.colloid.uitk-font-fix/package.json"
