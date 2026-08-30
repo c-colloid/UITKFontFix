@@ -43,6 +43,15 @@ says which.
   *Steered, not solved:* the policy helpers take the language as a
   parameter, pushing the query to a safe callback -- calling it there
   is still on you (Recipe 3 shows the pattern).
+- **A font built from an OS family dies across Play Mode.**
+  `FontAsset.CreateFontAsset` leaves the atlas material and atlas
+  textures it creates at `HideFlags.None`, so the editor destroys them
+  on a Play Mode transition while the `FontAsset` itself survives --
+  after which every draw throws `MissingReferenceException` from
+  inside TextCore. *Avoided automatically:* the resolvers flag those
+  child objects, re-flag pages TextCore adds later, and repair an
+  asset in place if it is damaged anyway, so the elements you already
+  applied keep working (see item 12 under Verified behavior).
 
 `FontFix` packages the verified workarounds behind a small facade:
 resolvers that cache, never throw, and report which candidate won;
@@ -531,7 +540,7 @@ cache their result, **never throw**, and are safe in batch mode.
 | --- | --- |
 | `EditorMonoFont` | Resolved monospace `Font`: bundled RobotoMono first, face-probed single-name OS fonts second, default label font last. Cached; effectively never null in a functioning editor. |
 | `EditorMonoFontSource` | Which mono candidate won: `"editor:<path>"`, `"os:<name>"`, `"label"`, or empty. |
-| `CjkUiFontAsset` | Latin+CJK `FontAsset` (DynamicOS mode) from the first installed candidate, or null when none resolves. Glyphs populate lazily at render time; the transient asset is destroyed before every domain reload. |
+| `CjkUiFontAsset` | Latin+CJK `FontAsset` (DynamicOS mode) from the first installed candidate, or null when none resolves. Glyphs populate lazily at render time; the transient asset is destroyed before every domain reload. Never returns an asset whose atlas material or in-use atlas pages were destroyed (a Play Mode transition is the usual cause): it is repaired in place, so the instance -- and every element already using it -- stays valid. Read it each time instead of caching the `FontAsset` in your own field. |
 | `CjkUiFontSource` | Which CJK candidate won: `"osasset:<name>"`, or empty. |
 | `ApplyMono(VisualElement)` | Inline `unityFontDefinition` assignment on one **leaf**; survives any ancestor `ApplyCjkUi`. No-ops (keeps the inherited font) on null or when nothing resolved. |
 | `ApplyCjkUi(VisualElement)` | Font assignment on a **container root** that descendants inherit. No-ops on null or when nothing resolved -- callers must not assume the font changed. |
@@ -541,7 +550,8 @@ cache their result, **never throw**, and are safe in batch mode.
 | `ShouldPreferCjkUi(SystemLanguage)` | Pure policy: true for Japanese, Chinese (all variants) and Korean. |
 | `SanitizeDisplayText(string)` | Lossless display hygiene: strips every variation selector (including ideographic ones), zero-width characters, the BOM and emoji tag characters. Returns the same instance when clean, `string.Empty` for null; never removes a character that draws its own glyph. |
 | `SanitizeDisplayText(string, string)` | **Lossy** overload: the strip above, then every non-BMP codepoint and unpaired surrogate becomes the given replacement (the parameter is the opt-in). Strip-then-replace order is a documented guarantee. |
-| `ResetCaches()` | Drops every cached resolution (destroying package-owned transient objects) so the next access re-probes. |
+| `ResetCaches()` | Drops every cached resolution (destroying package-owned transient objects) so the next access re-probes. Raises `CachesInvalidated`. |
+| `CachesInvalidated` | `static event Action`, raised synchronously when a resolved object this package handed out was destroyed or replaced: `ResetCaches()`, a `FontFixSettings` change (including the settings UIs), or the rare rebuild after unrepairable damage. Elements keep the `FontAsset` in their inline style, so subscribe and re-apply (`ApplyCjkUi`/`ApplyMono` again). It does **not** fire for an in-place repair (same instance, nothing to do) or before a domain reload. Subscriptions are lost on every domain reload: subscribe from `CreateGUI`/`OnEnable`, unsubscribe in `OnDisable`. A throwing handler is logged and the others still run. |
 
 ### `FontFixSettings` (static configuration, editor assembly)
 
@@ -681,6 +691,22 @@ non-obvious design choice above traces back to one of them.
 11. In batch mode, OS dynamic font **face** operations all fail while
     DynamicOS FontAsset **creation** works. The test suite is built
     around exactly this split.
+12. `FontAsset.CreateFontAsset` creates its atlas material and atlas
+    texture with `HideFlags.None` (the TextCore source sets `hideFlags`
+    nowhere), while Unity's own cache of runtime font assets stamps
+    `HideFlags.DontSave` on the asset **and** on `atlasTextures[0]`
+    **and** on `material`. `HideFlags.DontSave` is documented as "will
+    not be destroyed when a new Scene is loaded", which a Play Mode
+    transition performs: an unflagged child dies, the flagged
+    `FontAsset` survives holding a destroyed reference, and the next
+    draw throws `MissingReferenceException` from inside TextCore. A
+    `FontAsset` assigned directly through `unityFontDefinition` never
+    passes through Unity's stamping code, so this is the package's
+    responsibility: it flags the children at creation, re-flags them
+    before every Play Mode transition (TextCore adds atlas pages
+    lazily, unflagged), verifies liveness on every cached access and
+    on entering/leaving Play Mode, and repairs a damaged asset **in
+    place** so already-applied elements heal without re-applying.
 
 ## Unity version compatibility
 

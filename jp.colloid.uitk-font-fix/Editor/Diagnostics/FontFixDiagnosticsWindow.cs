@@ -25,6 +25,39 @@ namespace Colloid.UitkFontFix
         public void CreateGUI()
         {
             Rebuild();
+            // Dogfooding: this window applies the resolved fonts to its
+            // own tree, and its own buttons drop the caches. Without
+            // this it would keep painting with a destroyed FontAsset.
+            // Idempotent by construction (CreateGUI can run again after
+            // a domain reload, which clears the subscription anyway).
+            FontFix.CachesInvalidated -= OnCachesInvalidated;
+            FontFix.CachesInvalidated += OnCachesInvalidated;
+        }
+
+        private void OnDisable()
+        {
+            FontFix.CachesInvalidated -= OnCachesInvalidated;
+        }
+
+        private void OnCachesInvalidated()
+        {
+            // Re-APPLY only. Rebuilding the tree here would destroy the
+            // very button whose click callback is on the stack.
+            ReapplyFonts();
+            RefreshReport();
+        }
+
+        private void ReapplyFonts()
+        {
+            VisualElement root = rootVisualElement;
+            if (root != null && FontFix.ShouldPreferCjkUi(Application.systemLanguage))
+            {
+                FontFix.ApplyCjkUi(root);
+            }
+            if (_report != null)
+            {
+                FontFix.ApplyMono(_report);
+            }
         }
 
         private TextField _report;

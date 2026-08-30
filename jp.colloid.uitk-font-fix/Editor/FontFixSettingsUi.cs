@@ -64,11 +64,22 @@ namespace Colloid.UitkFontFix
 
             System.Action applyFields = delegate
             {
-                FontFixSettings.CjkUiFontNames = SplitLines(cjkNames.value);
-                FontFixSettings.CjkUiStyleName = cjkStyle.value;
-                FontFixSettings.CjkUiBoldStyleName = cjkBold.value;
-                FontFixSettings.EditorMonoFontPaths = SplitLines(monoPaths.value);
-                FontFixSettings.OsMonoFontNames = SplitLines(osMono.value);
+                // Batched: the five assignments are one user action, so
+                // subscribers to FontFix.CachesInvalidated see one
+                // notification with the whole form applied.
+                FontFix.BeginSettingsBatch();
+                try
+                {
+                    FontFixSettings.CjkUiFontNames = SplitLines(cjkNames.value);
+                    FontFixSettings.CjkUiStyleName = cjkStyle.value;
+                    FontFixSettings.CjkUiBoldStyleName = cjkBold.value;
+                    FontFixSettings.EditorMonoFontPaths = SplitLines(monoPaths.value);
+                    FontFixSettings.OsMonoFontNames = SplitLines(osMono.value);
+                }
+                finally
+                {
+                    FontFix.EndSettingsBatch();
+                }
             };
 
             var buttons = new VisualElement();
@@ -142,8 +153,10 @@ namespace Colloid.UitkFontFix
             return "Resolution: mono = " + Describe(FontFix.EditorMonoFontSource)
                 + ", cjk-ui = " + Describe(FontFix.CjkUiFontSource)
                 + "\nProject file: " + fileState
-                + "\nNote: open windows keep their current font; newly"
-                + " built UI picks up changes.";
+                + "\nNote: changing values here replaces the resolved"
+                + " font objects. Windows that subscribe to"
+                + " FontFix.CachesInvalidated re-apply immediately;"
+                + " others pick the change up when they are rebuilt.";
         }
 
         private static string Describe(string source)

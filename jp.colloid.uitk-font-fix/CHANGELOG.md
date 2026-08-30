@@ -3,6 +3,47 @@
 All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-08-30
+
+### Fixed
+
+- Fonts resolved from an OS family no longer break across a Play Mode
+  transition. `FontAsset.CreateFontAsset` leaves the atlas material and
+  atlas textures it creates at `HideFlags.None`, so the editor destroys
+  them while the `HideAndDontSave` `FontAsset` survives holding
+  destroyed references, and every later draw throws
+  `MissingReferenceException` from inside TextCore. The package now
+  stamps the protective flags on those children at creation -- exactly
+  what Unity's own runtime-font-asset cache does -- re-stamps them
+  before each Play Mode transition (TextCore adds atlas pages lazily,
+  unflagged), verifies liveness on every cached access and on
+  entering/leaving Play Mode, and repairs a damaged asset **in place**.
+  In-place matters: UI Toolkit elements hold the `FontAsset` in their
+  inline style, so a replacement instance would not heal them. The gap
+  applied to every face the package creates, including the real-Bold
+  face wired into the weight table by default.
+- Changing `FontFixSettings` (from code, the Project Settings pane, the
+  diagnostics window, or the project settings file) destroys the
+  resolved objects that open windows are still painting with. The new
+  `CachesInvalidated` event makes that recoverable, and the two UIs
+  this package ships now subscribe to it and re-apply their own fonts;
+  the settings UIs no longer claim that open windows keep working.
+
+### Added
+
+- `FontFix.CachesInvalidated`: a `static event Action` raised
+  synchronously when a resolved object the package handed out was
+  destroyed or replaced (`ResetCaches()`, a settings change, or a
+  rebuild after unrepairable damage). Subscribers re-apply their fonts;
+  it does not fire for an in-place repair, since the instance is
+  unchanged. Multi-property operations raise it once, and a scope in
+  which nothing actually changed raises nothing. Subscriptions are lost
+  on every domain reload.
+- Diagnostics report: the CJK atlas section now shows whether the asset
+  is usable, the atlas material with its `hideFlags`, how many pages are
+  in use, and per-page flags (distinguishing a destroyed page from an
+  unused array slot).
+
 ## [0.3.0] - 2026-08-30
 
 ### Added

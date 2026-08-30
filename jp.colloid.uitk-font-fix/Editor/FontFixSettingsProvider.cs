@@ -22,6 +22,11 @@ namespace Colloid.UitkFontFix
             provider.label = "UITK Font Fix";
             provider.keywords = new System.Collections.Generic.HashSet<string>(
                 new[] { "font", "uitk", "cjk", "japanese", "monospace" });
+            // Kept across the two handlers so the pane can unsubscribe:
+            // a static event holding a closure over a dead rootElement
+            // would keep re-applying to a detached tree for the rest of
+            // the domain's life.
+            System.Action reapplyFonts = null;
             provider.activateHandler = delegate (
                 string searchContext, VisualElement rootElement)
             {
@@ -29,6 +34,17 @@ namespace Colloid.UitkFontFix
                 {
                     FontFix.ApplyCjkUi(rootElement);
                 }
+                // This pane's own buttons drop the caches, destroying the
+                // FontAsset it is painting with; re-apply when that
+                // happens (re-apply only, never rebuild the tree).
+                reapplyFonts = delegate
+                {
+                    if (FontFix.ShouldPreferCjkUi(Application.systemLanguage))
+                    {
+                        FontFix.ApplyCjkUi(rootElement);
+                    }
+                };
+                FontFix.CachesInvalidated += reapplyFonts;
                 var container = new VisualElement();
                 container.style.paddingLeft = 10f;
                 container.style.paddingRight = 10f;
@@ -43,8 +59,10 @@ namespace Colloid.UitkFontFix
                 var intro = new Label(
                     "Font candidates for editor UIs built with this"
                     + " package. Changes affect every window that calls"
-                    + " FontFix.ApplyCjkUi / ApplyMono; windows already"
-                    + " open pick them up when rebuilt or reopened.");
+                    + " FontFix.ApplyCjkUi / ApplyMono; open windows"
+                    + " that subscribe to FontFix.CachesInvalidated"
+                    + " re-apply immediately, the rest pick the change"
+                    + " up when they are rebuilt or reopened.");
                 intro.style.whiteSpace = WhiteSpace.Normal;
                 intro.style.marginBottom = 4f;
                 container.Add(intro);
@@ -60,6 +78,14 @@ namespace Colloid.UitkFontFix
                 container.Add(diagButton);
 
                 rootElement.Add(container);
+            };
+            provider.deactivateHandler = delegate
+            {
+                if (reapplyFonts != null)
+                {
+                    FontFix.CachesInvalidated -= reapplyFonts;
+                    reapplyFonts = null;
+                }
             };
             return provider;
         }

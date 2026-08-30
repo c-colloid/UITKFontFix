@@ -229,6 +229,22 @@ namespace Colloid.UitkFontFix
 
         internal static void ApplyData(FontFixSettingsData data)
         {
+            // One batch for the whole file: subscribers to
+            // FontFix.CachesInvalidated get a single notification with
+            // every field applied, not one per field.
+            FontFix.BeginSettingsBatch();
+            try
+            {
+                ApplyDataFields(data);
+            }
+            finally
+            {
+                FontFix.EndSettingsBatch();
+            }
+        }
+
+        private static void ApplyDataFields(FontFixSettingsData data)
+        {
             // Null fields (absent in the file) are skipped; assignment
             // through FontFixSettings keeps the value-compare cache
             // invalidation semantics.

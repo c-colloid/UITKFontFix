@@ -115,11 +115,22 @@ namespace Colloid.UitkFontFix
         /// </summary>
         public static void ResetToDefaults()
         {
-            EditorMonoFontPaths = null;
-            OsMonoFontNames = null;
-            CjkUiFontNames = null;
-            CjkUiStyleName = null;
-            CjkUiBoldStyleName = null;
+            // One batch: five assignments would otherwise raise
+            // FontFix.CachesInvalidated up to five times, making every
+            // subscriber re-apply against a half-restored configuration.
+            FontFix.BeginSettingsBatch();
+            try
+            {
+                EditorMonoFontPaths = null;
+                OsMonoFontNames = null;
+                CjkUiFontNames = null;
+                CjkUiStyleName = null;
+                CjkUiBoldStyleName = null;
+            }
+            finally
+            {
+                FontFix.EndSettingsBatch();
+            }
         }
 
         private static void SetList(ref string[] field, string[] value, string[] fallback)

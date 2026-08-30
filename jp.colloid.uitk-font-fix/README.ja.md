@@ -45,6 +45,16 @@ Unity 2022.3 の UI Toolkit エディタUIには、踏みやすいのに原因�
   受け取る純粋関数なので、読み取りを安全なタイミング(`OnEnable` 以降)
   に置く設計に自然と導かれます。実際にそこで呼ぶのはあなたの役目です
   (レシピ3参照)。
+- **OS フォントから作ったフォントがプレイモードの往復で壊れる。**
+  `FontAsset.CreateFontAsset` が内部で作るアトラスの `Material` と
+  `Texture2D` は `HideFlags.None` のままなので、プレイモード遷移で
+  エディタがそれらを破棄します。`FontAsset` 本体だけが生き残るため、
+  以後テキストを描くたびに TextCore から `MissingReferenceException`
+  が飛びます。→ **自動で回避**: リゾルバが生成時にこれらの子オブジェクト
+  へ保護フラグを立て、TextCore が後から足すアトラスページにも貼り直し、
+  それでも壊れた場合は**同じインスタンスのまま修復**します。すでに適用
+  済みの要素も、何もしなくてもそのまま使い続けられます(詳細は
+  「検証済みの挙動」12項)。
 
 `FontFix` はこれらの実証済みの回避策を小さな窓口にまとめたものです。
 リゾルバはキャッシュされ、例外を投げず、どの候補が採用されたかを
@@ -523,7 +533,7 @@ cjk-ui candidates:
 | --- | --- |
 | `EditorMonoFont` | 解決済みのモノスペース `Font`。同梱 RobotoMono → フェイス検証済み OS フォント → 既定ラベルフォントの順。キャッシュされ、正常なエディタでは実質 null になりません。 |
 | `EditorMonoFontSource` | どのモノスペース候補が勝ったか: `"editor:<パス>"` / `"os:<名前>"` / `"label"` / 空文字。 |
-| `CjkUiFontAsset` | 最初に見つかった候補から作る Latin+CJK の `FontAsset`(DynamicOS モード)。候補が1つも解決できなければ null。グリフは描画時に遅延取得され(生成直後の `HasCharacter` が false でも正常)、一時アセットはドメインリロード前に必ず破棄されます。 |
+| `CjkUiFontAsset` | 最初に見つかった候補から作る Latin+CJK の `FontAsset`(DynamicOS モード)。候補が1つも解決できなければ null。グリフは描画時に遅延取得され(生成直後の `HasCharacter` が false でも正常)、一時アセットはドメインリロード前に必ず破棄されます。アトラスの material や使用中のページが破棄されたアセットを返すことはありません(主因はプレイモードの往復)。壊れていれば**同じインスタンスのまま**修復されるので、すでにそのアセットを使っている要素も有効なままです。自前のフィールドにキャッシュせず、必要なたびにこのプロパティを読んでください。 |
 | `CjkUiFontSource` | どの CJK 候補が勝ったか: `"osasset:<名前>"` / 空文字。 |
 | `ApplyMono(VisualElement)` | **リーフ**1要素へのインライン `unityFontDefinition` 代入。先祖の `ApplyCjkUi` に常に勝ちます。null や未解決時は何もせず、継承フォントを保ちます。 |
 | `ApplyCjkUi(VisualElement)` | **コンテナルート**へのフォント適用。配下が継承します。null や未解決時は何もしないので、フォントが変わった前提のコードは書かないでください。 |
@@ -533,7 +543,8 @@ cjk-ui candidates:
 | `ShouldPreferCjkUi(SystemLanguage)` | ja/zh/ko の純粋判定。言語を引数で受け取るのは意図的です — シリアライズ中の `Application.systemLanguage` 読み取りは例外を投げます(レシピ3参照)。 |
 | `SanitizeDisplayText(string)` | 無損失のテキスト衛生: 異体字セレクタ(IVS 含む)・ゼロ幅文字・BOM・絵文字タグ文字を除去します。クリーンなら同一インスタンスを返し、null は `string.Empty` に。自分のグリフを描く文字は決して消しません。 |
 | `SanitizeDisplayText(string, string)` | **損失あり**のオーバーロード: 上の除去の後、BMP 外のコードポイントと孤立サロゲートを指定の置換文字列に置き換えます(引数を渡すこと自体がオプトイン)。「除去→置換」の順序は仕様として保証されます。 |
-| `ResetCaches()` | キャッシュを全部捨てます(キット所有の一時オブジェクトは破棄)。次のアクセスで再解決されます。 |
+| `ResetCaches()` | キャッシュを全部捨てます(キット所有の一時オブジェクトは破棄)。次のアクセスで再解決されます。`CachesInvalidated` を発火します。 |
+| `CachesInvalidated` | `static event Action`。手渡し済みの解決結果が破棄・交替したときだけ同期的に発火します(`ResetCaches()`、`FontFixSettings` の変更(設定UI経由を含む)、修復不能だった場合の再構築)。要素はインラインスタイルに `FontAsset` を保持しているので、購読して `ApplyCjkUi`/`ApplyMono` を呼び直してください。その場修復では発火しません(インスタンスが同じなので何もする必要がありません)。ドメインリロード前にも発火しません。購読はドメインリロードで失われるので、`CreateGUI`/`OnEnable` で購読し `OnDisable` で解除します。ハンドラが例外を投げてもログに出るだけで、他の購読者は実行されます。 |
 
 ### `FontFixSettings`(static 設定、エディタアセンブリ)
 
@@ -677,6 +688,23 @@ cjk-ui candidates:
 11. バッチモードでは、OS 動的フォントの**フェイス**操作は全滅しますが、
     DynamicOS FontAsset の**生成**は動きます。テストスイートはこの
     非対称を前提に組んであります。
+12. `FontAsset.CreateFontAsset` が作るアトラスの material と
+    Texture2D は `HideFlags.None` のままです(TextCore 側のソースには
+    `hideFlags` の代入が1つもありません)。一方 Unity 自身は、
+    ランタイム生成フォントをキャッシュする箇所で、アセット本体だけで
+    なく `atlasTextures[0]` と `material` にも `HideFlags.DontSave` を
+    立てています。`HideFlags.DontSave` は「新しいシーンがロードされて
+    も破棄されない」と定義されており、プレイモードの遷移はそのシーン
+    ロードを伴います。つまりフラグの無い子オブジェクトだけが死に、
+    フラグ付きの `FontAsset` は壊れた参照を抱えたまま生き残り、次の
+    描画で TextCore から `MissingReferenceException` が飛びます。
+    `unityFontDefinition` に `FontAsset` を直接渡した場合は Unity 側の
+    フラグ付けコードを通らないため、これはパッケージ側の責任です。
+    本パッケージは生成時に子へフラグを立て、プレイモード遷移の直前に
+    (TextCore が遅延生成したページも含めて)貼り直し、キャッシュへの
+    アクセス時とプレイモードの出入り時に生存を確認し、壊れていれば
+    **同じインスタンスのまま**修復します。適用済みの要素は再適用なしで
+    復帰します。
 
 ## Unity バージョン互換性
 
