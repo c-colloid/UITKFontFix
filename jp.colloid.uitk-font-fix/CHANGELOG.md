@@ -3,6 +3,40 @@
 All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-08-30
+
+### Added
+
+- Created-object naming: every FontAsset the package creates (plus its
+  material, first atlas page, and any kit-owned OS Font) carries the
+  `FontFix.CreatedObjectNameTag` suffix `[UITK Font Fix]`, making
+  package-created objects identifiable in the UITK Debugger and
+  searchable in the Memory Profiler. Shared editor assets are never
+  renamed.
+- `FontFix.GetCjkUiFontAsset(string styleName)`: cached per-face
+  assets of the resolved CJK family (Semibold, Light, ...); face names
+  are exact, misses are cached, base-style lookups alias to
+  `CjkUiFontAsset`.
+- `FontFix.ApplyCjkUiFace(VisualElement, string)`: leaf-element face
+  assignment (no-op on a face miss).
+- `FontFixSettings.CjkUiBoldStyleName` (default `"Bold"`; `""`
+  disables bold wiring; null restores the default).
+- Diagnostics report: new "CJK faces" section (bold wiring state,
+  per-face cache with actual face names) and per-page atlas texture
+  names.
+
+### Changed
+
+- `-unity-font-style: bold` on CJK-styled text now renders the
+  family's REAL Bold face when one exists: the package wires it into
+  the base asset's `fontWeightTable` at resolution time. Families
+  without a Bold face keep the previous synthetic (SDF-dilated) bold,
+  and `FontFixSettings.CjkUiBoldStyleName = ""` restores the previous
+  behavior wholesale. Real Bold has different advances, so bold labels
+  can wrap differently after upgrading. Bold-and-italic stays
+  synthetic (no italic wiring; default CJK families ship no italic
+  faces).
+
 ## [0.1.0] - 2026-07-31
 
 ### Added

@@ -179,7 +179,65 @@ Rule of thumb: call `ApplyCjkUi` on container roots and `ApplyMono` on
 leaves, and never call both on the same element -- both are inline
 writes, and the last call silently wins.
 
-### 2. Language gating done safely
+### 2. Real Bold, and selecting other faces (Semibold headers)
+
+Since 0.2.0 the package wires the resolved family's real Bold face
+into the base asset's weight table, so `-unity-font-style: bold` (and
+`<b>` in rich text) renders the actual Bold face instead of the
+synthetic thickened outline. Families without a Bold face keep the old
+synthetic rendering, and `FontFixSettings.CjkUiBoldStyleName = ""`
+restores it explicitly. Note that a real Bold face has different
+advances than the synthetic one, so existing bold labels can wrap
+slightly differently after upgrading.
+
+Faces that USS cannot reach (Semibold, Light, Medium, ...) are
+available per element instead: `GetCjkUiFontAsset` returns a cached
+asset for any face of the resolved family, and `ApplyCjkUiFace`
+assigns one to a LEAF element -- same leaf semantics as `ApplyMono`,
+distinct on purpose from the container-root `ApplyCjkUi`. Style names
+must match the face name exactly as the OS reports it (some families
+name their regular face "Book"); a missing face makes `ApplyCjkUiFace`
+no-op so the element degrades visibly to the inherited base face.
+
+```csharp
+using Colloid.UitkFontFix;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+public class ReleaseNotesWindow : EditorWindow
+{
+    [MenuItem("Window/Release Notes")]
+    public static void Open()
+    {
+        GetWindow<ReleaseNotesWindow>("Release Notes");
+    }
+
+    public void CreateGUI()
+    {
+        if (FontFix.ShouldPreferCjkUi(Application.systemLanguage))
+        {
+            FontFix.ApplyCjkUi(rootVisualElement);
+        }
+
+        var heading = new Label("Release highlights");
+        FontFix.ApplyCjkUiFace(heading, "Semibold");
+        rootVisualElement.Add(heading);
+
+        var body = new Label("Bold runs in this text use the real Bold face.");
+        body.style.unityFontStyleAndWeight = FontStyle.Bold;
+        rootVisualElement.Add(body);
+    }
+}
+```
+
+Every `FontAsset` the package creates (base, Bold, per-face) is
+name-tagged `[UITK Font Fix]` -- that is the name shown in the UITK
+Debugger's resolved-style panel and the string to search for in the
+Memory Profiler. The diagnostics window lists which faces resolved,
+what is wired into the weight table, and every atlas page name.
+
+### 3. Language gating done safely
 
 `Application.systemLanguage` throws a `UnityException` when read
 during serialization (constructors, field initializers), and one
@@ -220,7 +278,7 @@ public class MyToolState : ScriptableObject
 any script. In editor code, `FontFix.ShouldPreferCjkUi` is the same
 policy behind the facade.
 
-### 3. Sanitizing model/user text before display
+### 4. Sanitizing model/user text before display
 
 The example below is editor UI code, for example under an Editor
 folder. `ShowMessage` is lossless and always safe to call: it strips
@@ -261,7 +319,7 @@ public static class ChatView
 All sanitizers are pure, never throw, return the same string instance
 when nothing needs changing, and map null to `string.Empty`.
 
-### 4. Overriding the candidate fonts (zh/ko-first products)
+### 5. Overriding the candidate fonts (zh/ko-first products)
 
 The defaults resolve a Japanese-priority chain. Products that ship
 primarily for Chinese or Korean users replace the CJK candidate list --
@@ -315,7 +373,7 @@ The same pattern applies to `EditorMonoFontPaths` and `OsMonoFontNames`
 for the monospace side, and `CjkUiStyleName` for the style passed to
 `FontAsset.CreateFontAsset`.
 
-### 5. Guarding fixed UI strings with SafeGlyphs + GlyphAudit
+### 6. Guarding fixed UI strings with SafeGlyphs + GlyphAudit
 
 Fixed UI strings (icons, bullets, arrows baked into your sources)
 should stick to printable ASCII plus the proven-safe `SafeGlyphs`
@@ -375,7 +433,7 @@ public class UiGlyphSafetyTests
 This package runs the same audit over its own shipped sources as part
 of its test suite.
 
-### 6. Diagnostics: what resolved, and why
+### 7. Diagnostics: what resolved, and why
 
 Open **Window > UITK Font Fix > Diagnostics** for a read-only report
 with *Re-probe* (drops caches, resolves again) and *Copy report*
@@ -435,6 +493,9 @@ cache their result, **never throw**, and are safe in batch mode.
 | `CjkUiFontSource` | Which CJK candidate won: `"osasset:<name>"`, or empty. |
 | `ApplyMono(VisualElement)` | Inline `unityFontDefinition` assignment on one **leaf**; survives any ancestor `ApplyCjkUi`. No-ops (keeps the inherited font) on null or when nothing resolved. |
 | `ApplyCjkUi(VisualElement)` | Font assignment on a **container root** that descendants inherit. No-ops on null or when nothing resolved -- callers must not assume the font changed. |
+| `GetCjkUiFontAsset(string)` | The resolved family in a given face style (exact face name, e.g. `"Semibold"`). Null/empty/base-style aliases to `CjkUiFontAsset` (same instance); other faces are created once, cached (misses too), kit-owned and name-tagged. Null when the base did not resolve or the face does not exist. |
+| `ApplyCjkUiFace(VisualElement, string)` | Inline assignment of a specific face on a **leaf** element (Semibold headers etc.). No-ops on null element or a face miss, degrading to the inherited base face. |
+| `CreatedObjectNameTag` | `"[UITK Font Fix]"` -- the suffix stamped on every kit-created object name (assets, materials, first atlas pages, owned OS fonts); the Memory Profiler search string. |
 | `ShouldPreferCjkUi(SystemLanguage)` | Pure policy: true for Japanese, Chinese (all variants) and Korean. |
 | `SanitizeDisplayText(string)` | Lossless display hygiene: strips every variation selector (including ideographic ones), zero-width characters, the BOM and emoji tag characters. Returns the same instance when clean, `string.Empty` for null; never removes a character that draws its own glyph. |
 | `SanitizeDisplayText(string, string)` | **Lossy** overload: the strip above, then every non-BMP codepoint and unpaired surrogate becomes the given replacement (the parameter is the opt-in). Strip-then-replace order is a documented guarantee. |
@@ -452,6 +513,7 @@ warm. Assigning null to any property restores that property's default.
 | `OsMonoFontNames` | OS monospace family names, probed one at a time. Empty array disables the tier. |
 | `CjkUiFontNames` | Latin+CJK family names, probed one at a time, most preferred first. Empty array disables CJK resolution entirely (`ApplyCjkUi` then no-ops). |
 | `CjkUiStyleName` | Style name passed to `FontAsset.CreateFontAsset` (default `"Regular"`). Null/empty restores the default. |
+| `CjkUiBoldStyleName` | Face wired into the base asset's weight table so bold text renders it (default `"Bold"`). Null restores the default; `""` disables wiring and restores the pre-0.2.0 synthetic bold. |
 | `ResetToDefaults()` | Restores every property; only invalidates caches when something actually changed (safe in test teardown). |
 
 ### Runtime utilities (runtime assembly)
@@ -469,7 +531,7 @@ allocates on the clean fast path, maps null to `string.Empty`.
 
 | Member | Behavior |
 | --- | --- |
-| `ShouldPreferCjkUi(SystemLanguage)` | Pure ja/zh/ko policy. Takes the language as a parameter on purpose: reading `Application.systemLanguage` during serialization throws (see Recipe 2). |
+| `ShouldPreferCjkUi(SystemLanguage)` | Pure ja/zh/ko policy. Takes the language as a parameter on purpose: reading `Application.systemLanguage` during serialization throws (see Recipe 3). |
 
 **`SafeGlyphs`**
 
@@ -493,7 +555,7 @@ Treat the arrays as read-only; customize through `FontFixSettings`.
 ### Editor helpers
 
 **`GlyphAudit`** -- source-level glyph safety audit, usable from
-consumer test assemblies (see Recipe 5).
+consumer test assemblies (see Recipe 6).
 
 | Member | Behavior |
 | --- | --- |

@@ -92,6 +92,14 @@ namespace Colloid.UitkFontFix
                         .Append(pages[0].width).Append('x')
                         .Append(pages[0].height).Append('\n');
                 }
+                for (int i = 0; i < pageCount; i++)
+                {
+                    // Lazily-added pages keep TextCore default names (no
+                    // kit tag); listing them here keeps them attributable.
+                    sb.Append("  page ").Append(i).Append(": ")
+                        .Append(pages[i] != null ? pages[i].name : "(null)")
+                        .Append('\n');
+                }
                 if (pageCount > 1)
                 {
                     sb.Append("note: multiple atlas pages -- <mark> quads"
@@ -103,7 +111,69 @@ namespace Colloid.UitkFontFix
                 sb.Append("atlas probe threw ")
                     .Append(e.GetType().Name).Append('\n');
             }
+            AppendFacesSection(sb, cjk);
             sb.Append('\n');
+        }
+
+        private static void AppendFacesSection(
+            StringBuilder sb, UnityEngine.TextCore.Text.FontAsset cjk)
+        {
+            sb.Append("-- CJK faces --\n");
+            try
+            {
+                string boldStyle = FontFixSettings.CjkUiBoldStyleName;
+                UnityEngine.TextCore.Text.FontAsset wired = null;
+                UnityEngine.TextCore.Text.FontWeightPair[] table = cjk.fontWeightTable;
+                if (table != null && table.Length > 7)
+                {
+                    wired = table[7].regularTypeface;
+                }
+                if (wired != null)
+                {
+                    sb.Append("bold wiring    : wired -> ")
+                        .Append(wired.name).Append('\n');
+                }
+                else if (string.IsNullOrEmpty(boldStyle))
+                {
+                    sb.Append("bold wiring    : disabled (empty style name;"
+                        + " faux bold)\n");
+                }
+                else if (string.Equals(boldStyle, FontFixSettings.CjkUiStyleName,
+                    System.StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append("bold wiring    : skipped (bold style equals"
+                        + " base style)\n");
+                }
+                else
+                {
+                    sb.Append("bold wiring    : no face named '")
+                        .Append(boldStyle).Append("' (faux bold)\n");
+                }
+                var styles = FontFix.GetCjkStyleCacheSnapshot();
+                sb.Append("style cache    : ").Append(styles.Count).Append('\n');
+                for (int i = 0; i < styles.Count; i++)
+                {
+                    sb.Append("  '").Append(styles[i].Key).Append("' -> ");
+                    if (styles[i].Value != null)
+                    {
+                        // Requested style vs actual face: a mismatch here
+                        // is what exposes a loose OS face match.
+                        sb.Append(styles[i].Value.name)
+                            .Append(" (face: ")
+                            .Append(styles[i].Value.faceInfo.styleName)
+                            .Append(")\n");
+                    }
+                    else
+                    {
+                        sb.Append("(miss)\n");
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                sb.Append("faces probe threw ")
+                    .Append(e.GetType().Name).Append('\n');
+            }
         }
 
         private static void AppendEnvironmentSection(StringBuilder sb)

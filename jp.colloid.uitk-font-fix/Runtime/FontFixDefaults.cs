@@ -52,5 +52,12 @@ namespace Colloid.UitkFontFix
 
         /// <summary>Default style name passed to FontAsset.CreateFontAsset.</summary>
         public const string CjkUiStyleName = "Regular";
+
+        /// <summary>
+        /// Default face style wired into the base asset's weight table
+        /// so bold text renders the real Bold face. Families lacking a
+        /// face with this exact name keep faux (SDF-dilated) bold.
+        /// </summary>
+        public const string CjkUiBoldStyleName = "Bold";
     }
 }

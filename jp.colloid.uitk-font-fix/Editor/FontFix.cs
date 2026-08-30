@@ -29,6 +29,16 @@ namespace Colloid.UitkFontFix
     /// </summary>
     public static class FontFix
     {
+        /// <summary>
+        /// Suffix tag stamped on the name of every transient Object this
+        /// package creates (FontAssets, their materials and first atlas
+        /// pages, owned OS Fonts), so kit-created objects are
+        /// identifiable in the UITK Debugger and the Memory Profiler
+        /// (search for the tag). Never applied to shared editor assets
+        /// such as the bundled mono TTF or the default label font.
+        /// </summary>
+        public const string CreatedObjectNameTag = "[UITK Font Fix]";
+
         private const int ProbePointSize = 12;
 
         private static Font _monoFont;
@@ -39,6 +49,16 @@ namespace Colloid.UitkFontFix
         private static UnityEngine.TextCore.Text.FontAsset _cjkUiAsset;
         private static bool _cjkUiProbed;
         private static string _cjkUiSource = string.Empty;
+
+        // Family name that won CJK resolution (never parsed back out of
+        // the source string), and the per-style asset cache keyed by
+        // face style name. A PRESENT null value is a cached miss, so
+        // repeated lookups of an unavailable face neither re-run
+        // CreateFontAsset nor repeat its one-line console log.
+        private static string _cjkUiFamilyName;
+        private static readonly System.Collections.Generic.Dictionary<string, UnityEngine.TextCore.Text.FontAsset>
+            _cjkStyleAssets = new System.Collections.Generic.Dictionary<string, UnityEngine.TextCore.Text.FontAsset>(
+                System.StringComparer.OrdinalIgnoreCase);
 
         private static bool _cleanupHooked;
 
@@ -101,6 +121,10 @@ namespace Colloid.UitkFontFix
                 {
                     _cjkUiProbed = true;
                     _cjkUiAsset = ResolveCjkUi(out _cjkUiSource);
+                    // Wiring runs AFTER the probed flag and field are set:
+                    // it calls GetCjkUiFontAsset, which reads this getter
+                    // again and must see the resolved base.
+                    WireBoldFace();
                 }
                 return _cjkUiAsset;
             }
@@ -117,6 +141,45 @@ namespace Colloid.UitkFontFix
                 UnityEngine.TextCore.Text.FontAsset unused = CjkUiFontAsset;
                 return _cjkUiSource;
             }
+        }
+
+        /// <summary>
+        /// The resolved CJK family in the given face style, e.g.
+        /// GetCjkUiFontAsset("Semibold") for headers. Null/empty or the
+        /// configured base style name (FontFixSettings.CjkUiStyleName)
+        /// returns the SAME instance as CjkUiFontAsset. Other styles are
+        /// created once per style from the SAME family that won base
+        /// resolution and cached (misses included), kit-owned and
+        /// destroyed on domain reload / ResetCaches. Returns null when
+        /// the base did not resolve or the family has no face with that
+        /// EXACT style name (face names are exact: some families call
+        /// their regular face "Book"; a miss also logs one console line
+        /// from TextCore). Never throws.
+        /// </summary>
+        public static UnityEngine.TextCore.Text.FontAsset GetCjkUiFontAsset(string styleName)
+        {
+            UnityEngine.TextCore.Text.FontAsset baseAsset = CjkUiFontAsset;
+            if (string.IsNullOrEmpty(styleName)
+                || string.Equals(styleName, FontFixSettings.CjkUiStyleName,
+                    System.StringComparison.OrdinalIgnoreCase))
+            {
+                return baseAsset;
+            }
+            if (baseAsset == null || string.IsNullOrEmpty(_cjkUiFamilyName))
+            {
+                // Base miss is already cached by the probed flag; do not
+                // insert per-style negative entries for it.
+                return null;
+            }
+            UnityEngine.TextCore.Text.FontAsset cached;
+            if (_cjkStyleAssets.TryGetValue(styleName, out cached))
+            {
+                return cached;
+            }
+            UnityEngine.TextCore.Text.FontAsset created =
+                CreateOwnedCjkAsset(_cjkUiFamilyName, styleName);
+            _cjkStyleAssets[styleName] = created;
+            return created;
         }
 
         // -- Application -------------------------------------------------------
@@ -160,6 +223,30 @@ namespace Colloid.UitkFontFix
             if (asset != null)
             {
                 containerRoot.style.unityFontDefinition =
+                    new StyleFontDefinition(FontShims.DefinitionFromFontAsset(asset));
+            }
+        }
+
+        /// <summary>
+        /// Applies a specific face of the resolved CJK family to one
+        /// LEAF element via an inline style.unityFontDefinition write --
+        /// e.g. ApplyCjkUiFace(header, "Semibold"). Distinct from
+        /// ApplyCjkUi on purpose: ApplyCjkUi belongs on container roots,
+        /// face selection belongs on leaves (like ApplyMono). No-ops,
+        /// keeping the inherited font, when the element is null or the
+        /// face did not resolve -- inside a composed CJK root that means
+        /// visible degradation to the inherited base face.
+        /// </summary>
+        public static void ApplyCjkUiFace(VisualElement leaf, string styleName)
+        {
+            if (leaf == null)
+            {
+                return;
+            }
+            UnityEngine.TextCore.Text.FontAsset asset = GetCjkUiFontAsset(styleName);
+            if (asset != null)
+            {
+                leaf.style.unityFontDefinition =
                     new StyleFontDefinition(FontShims.DefinitionFromFontAsset(asset));
             }
         }
@@ -232,6 +319,22 @@ namespace Colloid.UitkFontFix
             _cjkUiSource = string.Empty;
         }
 
+        // -- Diagnostics accessors (internal) ----------------------------------
+
+        /// <summary>Family bound by the last successful CJK resolution, or null.</summary>
+        internal static string BoundCjkFamilyName
+        {
+            get { return _cjkUiFamilyName; }
+        }
+
+        /// <summary>Snapshot of the per-style cache (misses included as null values).</summary>
+        internal static System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset>>
+            GetCjkStyleCacheSnapshot()
+        {
+            return new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset>>(
+                _cjkStyleAssets);
+        }
+
         // -- Resolution internals ---------------------------------------------
 
         private static Font ResolveMono(out string source, out bool owned)
@@ -274,6 +377,10 @@ namespace Colloid.UitkFontFix
                 if (FaceLoads(osFont))
                 {
                     osFont.hideFlags = HideFlags.HideAndDontSave;
+                    // Kit-owned object: tag it. Dynamic-font glyph
+                    // resolution goes through fontNames, never
+                    // Object.name, so renaming cannot break the face.
+                    osFont.name = name + " " + CreatedObjectNameTag;
                     owned = true;
                     source = "os:" + name;
                     return osFont;
@@ -299,19 +406,130 @@ namespace Colloid.UitkFontFix
                     continue;
                 }
                 UnityEngine.TextCore.Text.FontAsset asset =
-                    FontShims.TryCreateOsFontAsset(name, FontFixSettings.CjkUiStyleName);
+                    CreateOwnedCjkAsset(name, FontFixSettings.CjkUiStyleName);
                 if (asset != null)
                 {
-                    // Transient object: never saved, destroyed before each
-                    // domain reload (and on cache reset).
-                    asset.hideFlags = HideFlags.HideAndDontSave;
-                    HookCleanup();
+                    _cjkUiFamilyName = name;
                     source = "osasset:" + name;
                     return asset;
                 }
             }
             source = string.Empty;
             return null;
+        }
+
+        /// <summary>
+        /// Creates a kit-OWNED DynamicOS FontAsset for one (family,
+        /// style) pair: transient (never saved, destroyed before each
+        /// domain reload and on cache reset), tagged with
+        /// <see cref="CreatedObjectNameTag"/> on the asset, its material
+        /// and its first atlas page. Later atlas pages are added lazily
+        /// by TextCore and keep engine default names -- the diagnostics
+        /// report lists every page name so they stay attributable.
+        /// Returns null when the family has no face with that exact
+        /// style name.
+        /// </summary>
+        private static UnityEngine.TextCore.Text.FontAsset CreateOwnedCjkAsset(
+            string familyName, string styleName)
+        {
+            UnityEngine.TextCore.Text.FontAsset asset = null;
+            try
+            {
+                asset = FontShims.TryCreateOsFontAsset(familyName, styleName);
+                if (asset == null)
+                {
+                    return null;
+                }
+                asset.hideFlags = HideFlags.HideAndDontSave;
+                NameCreatedAsset(asset);
+                HookCleanup();
+                return asset;
+            }
+            catch (System.Exception)
+            {
+                // Never-throw contract: a partially initialized asset
+                // must not escape both the caches and destruction.
+                if (asset != null)
+                {
+                    Object.DestroyImmediate(asset);
+                }
+                return null;
+            }
+        }
+
+        private static void NameCreatedAsset(UnityEngine.TextCore.Text.FontAsset asset)
+        {
+            try
+            {
+                // Distinguishing info first (narrow panels truncate from
+                // the right), provenance tag last; the actual face names
+                // from faceInfo, so a loose OS match stays visible.
+                asset.name = asset.faceInfo.familyName + " - "
+                    + asset.faceInfo.styleName + " " + CreatedObjectNameTag;
+                if (asset.material != null)
+                {
+                    asset.material.name = asset.name + " Material";
+                }
+                if (asset.atlasTextures != null && asset.atlasTextures.Length > 0
+                    && asset.atlasTextures[0] != null)
+                {
+                    asset.atlasTextures[0].name = asset.name + " Atlas";
+                }
+            }
+            catch (System.Exception)
+            {
+                // Naming is diagnostics-only; never let it fail resolution.
+            }
+        }
+
+        /// <summary>
+        /// Wires the real Bold face into the base asset's
+        /// fontWeightTable[7] so '-unity-font-style: bold' renders it
+        /// instead of faux (SDF-dilated) bold. Runs once per base
+        /// resolution; the wired instance IS the per-style cache entry
+        /// (one Bold atlas total). Skipped when disabled
+        /// (FontFixSettings.CjkUiBoldStyleName is empty), when the bold
+        /// style equals the base style (self-wiring guard), or when the
+        /// family has no such face -- rendering then keeps the faux-bold
+        /// behavior. Note bold-and-italic keeps consulting
+        /// italicTypeface, which stays empty (default CJK families ship
+        /// no italic faces), so it remains faux.
+        /// </summary>
+        private static void WireBoldFace()
+        {
+            if (_cjkUiAsset == null)
+            {
+                return;
+            }
+            string boldStyle = FontFixSettings.CjkUiBoldStyleName;
+            if (string.IsNullOrEmpty(boldStyle)
+                || string.Equals(boldStyle, FontFixSettings.CjkUiStyleName,
+                    System.StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+            try
+            {
+                UnityEngine.TextCore.Text.FontAsset boldAsset =
+                    GetCjkUiFontAsset(boldStyle);
+                if (boldAsset == null)
+                {
+                    return;
+                }
+                // The getter returns the live array (verified on 2022.3),
+                // so element assignment sticks; a regression test reads
+                // the slot back in case a future version returns a copy.
+                UnityEngine.TextCore.Text.FontWeightPair[] table =
+                    _cjkUiAsset.fontWeightTable;
+                if (table != null && table.Length > 7)
+                {
+                    table[7].regularTypeface = boldAsset;
+                }
+            }
+            catch (System.Exception)
+            {
+                // Wiring is an enhancement; never let it fail resolution.
+            }
         }
 
         // -- Cleanup -----------------------------------------------------------
@@ -328,11 +546,27 @@ namespace Colloid.UitkFontFix
 
         private static void DestroyOwned()
         {
+            // Deterministic order: the BASE asset (whose weight table may
+            // reference a style asset) dies first, then the style assets.
+            // A destroyed slot reference fake-nulls and TextCore's null
+            // check falls back to faux rendering, so even the reverse
+            // order is benign -- the fixed order just makes that argument
+            // unnecessary.
             if (_cjkUiAsset != null)
             {
                 Object.DestroyImmediate(_cjkUiAsset);
             }
             _cjkUiAsset = null;
+            foreach (System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset> entry
+                in _cjkStyleAssets)
+            {
+                if (entry.Value != null)
+                {
+                    Object.DestroyImmediate(entry.Value);
+                }
+            }
+            _cjkStyleAssets.Clear();
+            _cjkUiFamilyName = null;
             if (_monoFontOwned && _monoFont != null)
             {
                 Object.DestroyImmediate(_monoFont);

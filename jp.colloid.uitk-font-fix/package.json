@@ -1,6 +1,6 @@
 {
   "name": "jp.colloid.uitk-font-fix",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "UITK Font Fix",
   "description": "Font utilities for Unity UI Toolkit editor UIs: safe monospace and CJK UI font resolution, inline/inherited application helpers and text hygiene. Built from empirically verified TextCore behavior on 2022.3. Zero dependencies, Editor-first.",
   "unity": "2022.3",

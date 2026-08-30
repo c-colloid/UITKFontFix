@@ -25,6 +25,7 @@ namespace Colloid.UitkFontFix
         private static string[] _osMonoFontNames = FontFixDefaults.OsMonoFontNames;
         private static string[] _cjkUiFontNames = FontFixDefaults.CjkUiFontNames;
         private static string _cjkUiStyleName = FontFixDefaults.CjkUiStyleName;
+        private static string _cjkUiBoldStyleName = FontFixDefaults.CjkUiBoldStyleName;
 
         /// <summary>
         /// EditorGUIUtility.Load paths tried for the bundled mono TTF.
@@ -83,6 +84,32 @@ namespace Colloid.UitkFontFix
         }
 
         /// <summary>
+        /// Face style wired into the base asset's fontWeightTable so
+        /// '-unity-font-style: bold' renders the real Bold face.
+        /// Default: "Bold". Assigning null restores the default;
+        /// assigning string.Empty DISABLES wiring entirely (mirroring
+        /// the empty-array-disables-a-tier convention), restoring the
+        /// faux-bold rendering of earlier versions. Only an actual
+        /// change invalidates the FontFix caches.
+        /// </summary>
+        public static string CjkUiBoldStyleName
+        {
+            get { return _cjkUiBoldStyleName; }
+            set
+            {
+                string next = value == null
+                    ? FontFixDefaults.CjkUiBoldStyleName
+                    : value;
+                if (string.Equals(_cjkUiBoldStyleName, next, StringComparison.Ordinal))
+                {
+                    return;
+                }
+                _cjkUiBoldStyleName = next;
+                FontFix.InvalidateCaches();
+            }
+        }
+
+        /// <summary>
         /// Restores every property to its default. Only invalidates the
         /// FontFix caches when something actually changes.
         /// </summary>
@@ -92,6 +119,7 @@ namespace Colloid.UitkFontFix
             OsMonoFontNames = null;
             CjkUiFontNames = null;
             CjkUiStyleName = null;
+            CjkUiBoldStyleName = null;
         }
 
         private static void SetList(ref string[] field, string[] value, string[] fallback)
