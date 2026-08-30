@@ -11,26 +11,38 @@ rendering traps.
 Zero dependencies. Editor-first (Unity 2022.3 LTS or newer; the runtime
 assembly is structurally prepared for future runtime support). MIT.
 
-## The traps this package fixes
+## The traps this package addresses
 
-UI Toolkit editor UIs on Unity 2022.3 have a set of font failure modes
-that are easy to hit and hard to diagnose:
+UI Toolkit editor UIs on Unity 2022.3 share a set of font failure
+modes that are easy to hit and hard to diagnose. Some of them the
+resolvers avoid for you automatically; for the others this package
+gives you a one-call helper or a test to wire in -- each item below
+says which.
 
 - **CJK text renders "patchy bold".** The editor default font (Inter)
-  has no CJK coverage, so CJK glyphs fall back per glyph to whatever OS
-  fonts can supply them -- mixing families and weights mid-string.
+  has no CJK coverage, so CJK glyphs fall back per glyph to whatever
+  OS fonts can supply them -- mixing families and weights mid-string.
+  *Addressed with one call:* `ApplyCjkUi` on your window root.
 - **OS fonts can silently render empty text.**
   `Font.CreateDynamicFontFromOSFont` can produce a face UI Toolkit
   cannot load ("Unable to load font face"), and `FontEngine` cannot
-  validate such a `Font` first.
-- **USS cannot select OS fonts by name.** Fonts must be assigned from
-  C# via `style.unityFontDefinition`.
+  validate such a `Font` first. *Avoided automatically:* the resolvers
+  never hand a raw OS `Font` to UI Toolkit.
+- **USS cannot select OS fonts by name.** A Unity limitation no
+  package can lift. *Worked around:* the C# apply helpers
+  (`style.unityFontDefinition`) are the reliable route, and this
+  package wraps them for you.
 - **Model/user text spams warnings and draws placeholder squares.**
   Variation selectors (for example U+FE0F after a warning-sign
   character) and emoji-plane characters have no glyph in the editor
-  fonts.
-- **`Application.systemLanguage` throws during serialization**, so naive
-  language gating can take a whole settings asset down with it.
+  fonts. *Your call to make:* route free-form text through
+  `SanitizeDisplayText` before display, and let `GlyphAudit` fail a
+  test when an unsafe glyph is baked into your sources.
+- **`Application.systemLanguage` throws during serialization**, so
+  naive language gating can take a whole settings asset down with it.
+  *Steered, not solved:* the policy helpers take the language as a
+  parameter, pushing the query to a safe callback -- calling it there
+  is still on you (Recipe 3 shows the pattern).
 
 `FontFix` packages the verified workarounds behind a small facade:
 resolvers that cache, never throw, and report which candidate won;
