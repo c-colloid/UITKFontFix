@@ -33,16 +33,40 @@ namespace Colloid.UitkFontFix
     ///
     /// Load order and precedence: the file is applied once per domain
     /// load (InitializeOnLoadMethod). Consumer code that assigns
-    /// FontFixSettings afterwards (e.g. its own
-    /// InitializeOnLoadMethod bootstrap) wins, on purpose -- explicit
-    /// code is the stronger signal. The diagnostics report shows when
-    /// the effective values have drifted from the file.
+    /// FontFixSettings from its own InitializeOnLoadMethod bootstrap
+    /// TYPICALLY runs later and therefore wins -- Unity customarily
+    /// initializes a referenced assembly (this package) before its
+    /// dependents, but that ordering is convention, not a documented
+    /// guarantee. The diagnostics report shows when the effective
+    /// values have drifted from the file, whichever side caused it.
     /// </summary>
     public static class FontFixProjectSettings
     {
-        /// <summary>Project-relative path of the settings file.</summary>
-        public const string FilePath =
+        /// <summary>Project-relative location of the settings file.</summary>
+        public const string RelativeFilePath =
             "ProjectSettings/Packages/jp.colloid.uitk-font-fix/settings.json";
+
+        /// <summary>
+        /// Absolute path of the settings file, anchored to THIS
+        /// project's root via Application.dataPath rather than the
+        /// process working directory (which batch invocations may
+        /// leave elsewhere).
+        /// </summary>
+        public static string FilePath
+        {
+            get
+            {
+                try
+                {
+                    return Path.GetFullPath(Path.Combine(
+                        Application.dataPath, "..", RelativeFilePath));
+                }
+                catch (System.Exception)
+                {
+                    return RelativeFilePath;
+                }
+            }
+        }
 
         /// <summary>True when the project pins its font configuration.</summary>
         public static bool Exists
@@ -104,13 +128,23 @@ namespace Colloid.UitkFontFix
         {
             try
             {
-                string directory = Path.GetDirectoryName(FilePath);
+                string path = FilePath;
+                string directory = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(directory))
                 {
                     Directory.CreateDirectory(directory);
                 }
-                File.WriteAllText(FilePath,
+                // Write-then-swap so a concurrent reader (second editor
+                // instance, live diagnostics refresh) can never observe
+                // a torn file.
+                string temp = path + ".tmp";
+                File.WriteAllText(temp,
                     JsonUtility.ToJson(CaptureData(), true) + "\n");
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+                File.Move(temp, path);
                 return true;
             }
             catch (System.Exception)
@@ -161,11 +195,20 @@ namespace Colloid.UitkFontFix
                 {
                     return false;
                 }
-                return SameList(data.editorMonoFontPaths, FontFixSettings.EditorMonoFontPaths)
-                    && SameList(data.osMonoFontNames, FontFixSettings.OsMonoFontNames)
-                    && SameList(data.cjkUiFontNames, FontFixSettings.CjkUiFontNames)
-                    && data.cjkUiStyleName == FontFixSettings.CjkUiStyleName
-                    && data.cjkUiBoldStyleName == FontFixSettings.CjkUiBoldStyleName;
+                // Absent (null/empty) fields are skipped by ApplyData,
+                // so they must be skipped here too -- otherwise a
+                // hand-edited or older-schema file that omits a field
+                // would report drift forever, even right after loading.
+                return (data.editorMonoFontPaths == null
+                        || SameList(data.editorMonoFontPaths, FontFixSettings.EditorMonoFontPaths))
+                    && (data.osMonoFontNames == null
+                        || SameList(data.osMonoFontNames, FontFixSettings.OsMonoFontNames))
+                    && (data.cjkUiFontNames == null
+                        || SameList(data.cjkUiFontNames, FontFixSettings.CjkUiFontNames))
+                    && (string.IsNullOrEmpty(data.cjkUiStyleName)
+                        || data.cjkUiStyleName == FontFixSettings.CjkUiStyleName)
+                    && (data.cjkUiBoldStyleName == null
+                        || data.cjkUiBoldStyleName == FontFixSettings.CjkUiBoldStyleName);
             }
             catch (System.Exception)
             {

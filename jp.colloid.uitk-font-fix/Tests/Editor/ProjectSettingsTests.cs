@@ -32,7 +32,15 @@ namespace Colloid.UitkFontFix.Tests
         {
             Assert.AreEqual(
                 "ProjectSettings/Packages/jp.colloid.uitk-font-fix/settings.json",
-                FontFixProjectSettings.FilePath);
+                FontFixProjectSettings.RelativeFilePath);
+            string path = FontFixProjectSettings.FilePath;
+            Assert.IsTrue(Path.IsPathRooted(path),
+                "FilePath must be absolute so batch invocations with a"
+                + " foreign working directory still hit this project");
+            StringAssert.EndsWith(
+                FontFixProjectSettings.RelativeFilePath
+                    .Replace('/', Path.DirectorySeparatorChar),
+                path);
         }
 
         [Test]
@@ -97,6 +105,21 @@ namespace Colloid.UitkFontFix.Tests
             FontFixSettings.CjkUiFontNames = new[] { "Drifted Family" };
             Assert.IsFalse(FontFixProjectSettings.MatchesCurrentSettings(),
                 "changing values after saving must register as drift");
+        }
+
+        [Test]
+        public void MatchesCurrentSettings_SkipsFieldsAbsentFromFile()
+        {
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(FontFixProjectSettings.FilePath));
+            File.WriteAllText(FontFixProjectSettings.FilePath,
+                "{\"schemaVersion\":1,"
+                + "\"cjkUiFontNames\":[\"Partial Family\"]}");
+            Assert.IsTrue(FontFixProjectSettings.TryLoadAndApply());
+            Assert.IsTrue(FontFixProjectSettings.MatchesCurrentSettings(),
+                "a hand-edited file that omits fields must read as in"
+                + " sync right after loading, mirroring ApplyData's"
+                + " skip-absent semantics");
         }
 
         [Test]

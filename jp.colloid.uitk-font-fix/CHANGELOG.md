@@ -15,10 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (versioned, team-shared) via the new `FontFixProjectSettings` API;
   Use package defaults resets and deletes the file.
 - The saved file is applied once per domain load, before consumer
-  code; later `FontFixSettings` assignments from code win by design.
-  The diagnostics report gains a "Project settings file" section that
-  shows presence and drift, and the diagnostics Re-probe now
-  refreshes the report in place (edits in the foldout survive).
+  code in Unity's customary assembly-initialization order (a
+  convention, not a documented guarantee); later `FontFixSettings`
+  assignments from code win by design. The diagnostics report gains a
+  "Project settings file" section that shows presence and drift, and
+  the diagnostics Re-probe now applies pending foldout edits and
+  refreshes the report in place (half-edited fields survive).
 
 ## [0.2.0] - 2026-08-30
 

@@ -4,6 +4,18 @@ using UnityEngine.UIElements;
 namespace Colloid.UitkFontFix
 {
     /// <summary>
+    /// Handle to a created form: the element to add to a container,
+    /// plus the action that pushes pending field edits into
+    /// FontFixSettings (so hosts like the diagnostics window can apply
+    /// unsaved edits before a re-probe).
+    /// </summary>
+    internal class FontFixSettingsForm
+    {
+        internal VisualElement Root;
+        internal System.Action ApplyFields;
+    }
+
+    /// <summary>
     /// The shared no-code configuration form used by BOTH the Project
     /// Settings pane and the diagnostics window's edit section -- one
     /// implementation so the two entry points can never drift apart.
@@ -14,7 +26,7 @@ namespace Colloid.UitkFontFix
     /// </summary>
     internal static class FontFixSettingsUi
     {
-        internal static VisualElement CreateForm(System.Action onSettingsChanged)
+        internal static FontFixSettingsForm CreateForm(System.Action onSettingsChanged)
         {
             var form = new VisualElement();
 
@@ -22,9 +34,10 @@ namespace Colloid.UitkFontFix
                 "One family name per line, most preferred first."
                 + " English family names (the OS reports English names"
                 + " even on localized Windows).");
-            TextField cjkStyle = AddSingle(form, "CJK base face style");
-            TextField cjkBold = AddSingle(form,
-                "CJK bold face style (empty disables real-bold wiring)");
+            TextField cjkStyle = AddSingle(form, "CJK base face style",
+                "Empty resets to the package default (\"Regular\").");
+            TextField cjkBold = AddSingle(form, "CJK bold face style",
+                "Empty DISABLES real-bold wiring (synthetic bold).");
             TextField monoPaths = AddMultiline(form, "Editor mono font paths",
                 "EditorGUIUtility.Load paths for the bundled mono TTF,"
                 + " one per line.");
@@ -97,7 +110,15 @@ namespace Colloid.UitkFontFix
             form.Add(buttons);
             form.Add(status);
             refresh();
-            return form;
+            return new FontFixSettingsForm
+            {
+                Root = form,
+                ApplyFields = delegate
+                {
+                    applyFields();
+                    refresh();
+                }
+            };
         }
 
         private static string BuildStatusText()
@@ -114,8 +135,9 @@ namespace Colloid.UitkFontFix
             else
             {
                 fileState = "project file exists but DIFFERS from the"
-                    + " current values (edited here, or overridden by"
-                    + " code after load)";
+                    + " current values (edited here without saving,"
+                    + " overridden by code after load, or updated on"
+                    + " disk since this session started)";
             }
             return "Resolution: mono = " + Describe(FontFix.EditorMonoFontSource)
                 + ", cjk-ui = " + Describe(FontFix.CjkUiFontSource)
@@ -129,10 +151,15 @@ namespace Colloid.UitkFontFix
             return string.IsNullOrEmpty(source) ? "(none)" : source;
         }
 
-        private static TextField AddSingle(VisualElement parent, string label)
+        private static TextField AddSingle(
+            VisualElement parent, string label, string hint)
         {
             var field = new TextField(label);
             parent.Add(field);
+            var hintLabel = new Label(hint);
+            hintLabel.style.whiteSpace = WhiteSpace.Normal;
+            hintLabel.style.opacity = 0.7f;
+            parent.Add(hintLabel);
             return field;
         }
 

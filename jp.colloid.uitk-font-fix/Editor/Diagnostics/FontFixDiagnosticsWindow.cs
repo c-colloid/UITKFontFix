@@ -28,6 +28,7 @@ namespace Colloid.UitkFontFix
         }
 
         private TextField _report;
+        private FontFixSettingsForm _form;
 
         private void Rebuild()
         {
@@ -68,13 +69,15 @@ namespace Colloid.UitkFontFix
             // iterated in one window; "Save to project" writes the same
             // file the Project Settings pane manages. Refreshing only
             // the report keeps the foldout and half-edited fields
-            // intact.
+            // intact, and Re-probe pushes those pending edits first so
+            // the probe always reflects what is on screen.
             var editSection = new Foldout
             {
                 text = "Edit configuration",
                 value = false
             };
-            editSection.Add(FontFixSettingsUi.CreateForm(RefreshReport));
+            _form = FontFixSettingsUi.CreateForm(RefreshReport);
+            editSection.Add(_form.Root);
             scroll.Add(editSection);
 
             _report = new TextField
@@ -98,6 +101,10 @@ namespace Colloid.UitkFontFix
 
         private void OnRefreshClicked()
         {
+            if (_form != null)
+            {
+                _form.ApplyFields();
+            }
             FontFix.ResetCaches();
             RefreshReport();
         }

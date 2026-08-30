@@ -508,11 +508,14 @@ configuration* foldout, right next to the resolution report -- edit,
 *Apply*, *Re-probe*, read the result, repeat; once you like what you
 see, *Save to project* from there writes the same file.
 
-How it takes effect: the saved file is applied once per domain load,
-BEFORE consumer code runs, so code that assigns `FontFixSettings`
-afterwards deliberately wins (explicit code is the stronger signal).
-The diagnostics report's "Project settings file" section shows whether
-the effective values are still in sync with the file. As always,
+How it takes effect: the saved file is applied once per domain load.
+Unity customarily initializes a referenced assembly (this package)
+before its consumers, so consumer code that assigns `FontFixSettings`
+typically runs later and deliberately wins (explicit code is the
+stronger signal) -- though that ordering is convention, not a
+documented guarantee. Either way the diagnostics report's "Project
+settings file" section shows whether the effective values are still in
+sync with the file. As always,
 changes affect every window that calls the apply helpers; windows
 already open pick them up when rebuilt or reopened, and nothing
 outside this package's calls is touched.

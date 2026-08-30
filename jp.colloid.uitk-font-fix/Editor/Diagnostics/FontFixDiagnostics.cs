@@ -198,8 +198,10 @@ namespace Colloid.UitkFontFix
                 {
                     sb.Append("state : present but DIFFERS from the"
                         + " current values (changed in a settings UI"
-                        + " without saving, or overridden by code after"
-                        + " load)\n");
+                        + " without saving, overridden by code after"
+                        + " load, or updated on disk since this session"
+                        + " started -- reapplied on next domain"
+                        + " reload)\n");
                 }
             }
             catch (System.Exception e)

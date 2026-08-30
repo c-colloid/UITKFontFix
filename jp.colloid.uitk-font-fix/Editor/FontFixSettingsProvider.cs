@@ -49,7 +49,7 @@ namespace Colloid.UitkFontFix
                 intro.style.marginBottom = 4f;
                 container.Add(intro);
 
-                container.Add(FontFixSettingsUi.CreateForm(null));
+                container.Add(FontFixSettingsUi.CreateForm(null).Root);
 
                 var diagButton = new Button(FontFixDiagnosticsWindow.Open)
                 {
