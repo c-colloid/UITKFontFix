@@ -1,5 +1,7 @@
 # UITK Font Fix
 
+English | [日本語](README.ja.md)
+
 Font utilities for Unity UI Toolkit **editor** UIs: resolves a monospace
 font and a Latin+CJK UI font that are guaranteed to actually load,
 applies them with the one composition pattern that survives UI Toolkit

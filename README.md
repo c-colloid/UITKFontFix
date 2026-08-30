@@ -10,8 +10,9 @@ behavior verified empirically on Unity 2022.3.
 ## Package
 
 [`jp.colloid.uitk-font-fix/`](jp.colloid.uitk-font-fix/) -- see its
-[README](jp.colloid.uitk-font-fix/README.md) for install instructions,
-quick start, recipes and the full API reference.
+[README](jp.colloid.uitk-font-fix/README.md) (or the
+[Japanese version](jp.colloid.uitk-font-fix/README.ja.md)) for install
+instructions, quick start, recipes and the full API reference.
 
 ## Install
 
