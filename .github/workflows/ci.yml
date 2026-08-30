@@ -88,6 +88,7 @@ jobs:
       # package.json と {name}-{version}.zip(パッケージ内容がルートの VPM 形式)を添付する。
       # 既存リリースにアセットが無い場合は追補する(パッケージ変更はバージョンを上げる前提)。
       - name: Create release when the package version has no tag yet
+        id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -96,15 +97,18 @@ jobs:
           TAG="v${VERSION}"
           ZIP="${NAME}-${VERSION}.zip"
           echo "package version: ${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           (cd jp.colloid.uitk-font-fix && zip -r "/tmp/${ZIP}" . > /dev/null)
           mv "/tmp/${ZIP}" "${ZIP}"
           if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
             if gh release view "${TAG}" --json assets -q '.assets[].name' | grep -qx "${ZIP}"; then
               echo "tag ${TAG} already exists with VPM assets; nothing to release"
+              echo "released=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "tag ${TAG} exists without VPM assets; backfilling"
             gh release upload "${TAG}" "${ZIP}" "jp.colloid.uitk-font-fix/package.json" --clobber
+            echo "released=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           gh release create "${TAG}" \
@@ -113,3 +117,26 @@ jobs:
             --generate-notes \
             --notes "UPM install (version pinned): https://github.com/${GITHUB_REPOSITORY}.git?path=jp.colloid.uitk-font-fix#${TAG} -- changes: https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/jp.colloid.uitk-font-fix/CHANGELOG.md" \
             "${ZIP}" "jp.colloid.uitk-font-fix/package.json"
+          echo "released=true" >> "$GITHUB_OUTPUT"
+
+      # VPM リスティングは cron でも収集するが反映が数時間遅れることがあるため、
+      # リリース確定時に repository_dispatch で即時再生成を促す。通知は付随処理で
+      # あり、失敗してもリリース自体は成功のまま(cron が予備として拾う)。
+      # トークンは vpm の Contents 書き込みのみに絞った fine-grained PAT。
+      - name: Notify the VPM listing repository
+        if: steps.release.outputs.released == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.VPM_DISPATCH_TOKEN }}
+          LISTING_REPO: c-colloid/vpm
+          SOURCE_REPO: ${{ github.repository }}
+          SOURCE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::VPM_DISPATCH_TOKEN is not set; the listing will pick this release up on its next scheduled run."
+            exit 0
+          fi
+          gh api "repos/${LISTING_REPO}/dispatches" \
+            -f "event_type=package-released" \
+            -f "client_payload[repo]=${SOURCE_REPO}" \
+            -f "client_payload[version]=${SOURCE_VERSION}"
