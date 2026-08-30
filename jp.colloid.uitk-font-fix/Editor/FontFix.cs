@@ -62,6 +62,43 @@ namespace Colloid.UitkFontFix
 
         private static bool _cleanupHooked;
 
+        // Guards against re-entering the verify/rebuild path from a
+        // getter reached inside it (a CachesInvalidated handler that
+        // applies fonts does exactly that).
+        private static bool _verifying;
+
+        // CachesInvalidated bookkeeping: batch scope depth, a pending
+        // raise inside an open scope, and the drain state that keeps a
+        // handler-triggered invalidation from recursing forever.
+        private static int _batchDepth;
+        private static bool _batchPending;
+        private static bool _raising;
+        private static bool _raiseAgain;
+
+        /// <summary>
+        /// Raised when a cached object this package HANDED OUT was
+        /// destroyed or replaced by a different instance: ResetCaches, a
+        /// FontFixSettings change (including the settings UIs) and the
+        /// rare rebuild after unrepairable damage. UI Toolkit elements
+        /// keep the FontAsset in their inline style, so a subscriber
+        /// re-applies its fonts -- typically one ApplyFonts() method
+        /// calling ApplyCjkUi/ApplyMono again.
+        ///
+        /// It does NOT fire when damage was repaired in place (the
+        /// instance is unchanged, so subscribers have nothing to do) nor
+        /// before a domain reload (subscriptions die with it anyway).
+        /// Raised synchronously, after the caches are cleared, so a
+        /// handler that immediately re-applies re-probes cleanly and no
+        /// repaint can observe the destroyed objects. Each subscriber is
+        /// invoked separately and a throwing one is logged, never
+        /// allowed to starve the others.
+        ///
+        /// Subscriptions are lost on every domain reload: subscribe from
+        /// CreateGUI/OnEnable (or an InitializeOnLoadMethod), and
+        /// unsubscribe in OnDisable.
+        /// </summary>
+        public static event System.Action CachesInvalidated;
+
         // -- Resolution --------------------------------------------------------
 
         /// <summary>
@@ -77,15 +114,7 @@ namespace Colloid.UitkFontFix
         {
             get
             {
-                if (!_monoProbed)
-                {
-                    _monoProbed = true;
-                    _monoFont = ResolveMono(out _monoFontSource, out _monoFontOwned);
-                    if (_monoFontOwned)
-                    {
-                        HookCleanup();
-                    }
-                }
+                EnsureMonoResolved();
                 return _monoFont;
             }
         }
@@ -112,20 +141,19 @@ namespace Colloid.UitkFontFix
         /// after creation is normal. Cached after the first probe; the
         /// transient asset is destroyed before every domain reload so
         /// DynamicOS atlas textures cannot pile up across recompiles.
+        /// Never returns an asset whose atlas material or in-use atlas
+        /// pages have been destroyed: such damage (a Play Mode
+        /// transition is the usual cause) is repaired in place, keeping
+        /// the instance -- and therefore every element already using it
+        /// -- valid. Read this property (or call ApplyCjkUi) each time
+        /// rather than caching the FontAsset in your own field: only
+        /// this path runs that check.
         /// </summary>
         public static UnityEngine.TextCore.Text.FontAsset CjkUiFontAsset
         {
             get
             {
-                if (!_cjkUiProbed)
-                {
-                    _cjkUiProbed = true;
-                    _cjkUiAsset = ResolveCjkUi(out _cjkUiSource);
-                    // Wiring runs AFTER the probed flag and field are set:
-                    // it calls GetCjkUiFontAsset, which reads this getter
-                    // again and must see the resolved base.
-                    WireBoldFace();
-                }
+                EnsureCjkResolved();
                 return _cjkUiAsset;
             }
         }
@@ -303,7 +331,10 @@ namespace Colloid.UitkFontFix
         /// Drops every cached resolution (destroying kit-owned transient
         /// objects) so the next access re-probes. Called automatically
         /// when FontFixSettings values actually change; also useful from
-        /// tests.
+        /// tests. Elements that already carry a destroyed instance in
+        /// their inline style are NOT re-applied automatically: this
+        /// raises <see cref="CachesInvalidated"/> synchronously so
+        /// subscribers can do it.
         /// </summary>
         public static void ResetCaches()
         {
@@ -317,6 +348,97 @@ namespace Colloid.UitkFontFix
             _monoFontSource = string.Empty;
             _cjkUiProbed = false;
             _cjkUiSource = string.Empty;
+            // The raise is the LAST step on purpose: a handler that
+            // re-applies fonts calls back into the getters, which must
+            // see "not probed" and resolve freshly. Raising next to the
+            // destruction would make them see "probed, result null" and
+            // silently no-op.
+            if (_batchDepth > 0)
+            {
+                _batchPending = true;
+                return;
+            }
+            RaiseCachesInvalidated();
+        }
+
+        /// <summary>
+        /// Opens a scope in which repeated invalidations raise
+        /// CachesInvalidated only once, at the end. Used by the
+        /// multi-property operations (settings reset, the settings form,
+        /// the project settings file), where each property assignment
+        /// would otherwise make every subscriber re-probe against a
+        /// half-applied configuration. Nestable; a scope in which
+        /// nothing actually changed raises nothing.
+        /// </summary>
+        internal static void BeginSettingsBatch()
+        {
+            _batchDepth++;
+        }
+
+        /// <summary>Closes a BeginSettingsBatch scope. Must be called from a finally.</summary>
+        internal static void EndSettingsBatch()
+        {
+            if (_batchDepth > 0)
+            {
+                _batchDepth--;
+            }
+            if (_batchDepth > 0 || !_batchPending)
+            {
+                return;
+            }
+            _batchPending = false;
+            RaiseCachesInvalidated();
+        }
+
+        private static void RaiseCachesInvalidated()
+        {
+            if (_raising)
+            {
+                // A handler invalidated the caches again. Drain it after
+                // the current pass rather than recursing.
+                _raiseAgain = true;
+                return;
+            }
+            _raising = true;
+            try
+            {
+                // At most one extra pass: a handler that invalidates
+                // unconditionally must terminate, not spin.
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    _raiseAgain = false;
+                    System.Action handlers = CachesInvalidated;
+                    if (handlers == null)
+                    {
+                        return;
+                    }
+                    System.Delegate[] list = handlers.GetInvocationList();
+                    for (int i = 0; i < list.Length; i++)
+                    {
+                        try
+                        {
+                            ((System.Action)list[i])();
+                        }
+                        catch (System.Exception e)
+                        {
+                            // Deliberate departure from this package's
+                            // silent-swallow style: a consumer's broken
+                            // handler must stay attributable, and must
+                            // not starve the other subscribers.
+                            Debug.LogException(e);
+                        }
+                    }
+                    if (!_raiseAgain)
+                    {
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                _raising = false;
+                _raiseAgain = false;
+            }
         }
 
         // -- Diagnostics accessors (internal) ----------------------------------
@@ -336,6 +458,129 @@ namespace Colloid.UitkFontFix
         }
 
         // -- Resolution internals ---------------------------------------------
+
+        private static void EnsureMonoResolved()
+        {
+            if (_monoProbed)
+            {
+                VerifyOwned();
+            }
+            if (_monoProbed)
+            {
+                return;
+            }
+            _monoProbed = true;
+            _monoFont = ResolveMono(out _monoFontSource, out _monoFontOwned);
+            if (_monoFontOwned)
+            {
+                HookEditorEvents();
+            }
+        }
+
+        private static void EnsureCjkResolved()
+        {
+            if (_cjkUiProbed)
+            {
+                // May clear the probed flag when the damage could not be
+                // repaired; the resolution below then runs immediately.
+                VerifyOwned();
+            }
+            if (_cjkUiProbed)
+            {
+                return;
+            }
+            _cjkUiProbed = true;
+            _cjkUiAsset = ResolveCjkUi(out _cjkUiSource);
+            // Wiring runs AFTER the probed flag and field are set: it
+            // calls GetCjkUiFontAsset, which reads the getter again and
+            // must see the resolved base.
+            WireBoldFace();
+        }
+
+        /// <summary>
+        /// Repairs damaged owned objects, or drops the caches when the
+        /// damage cannot be repaired in place (which raises
+        /// CachesInvalidated so consumers can re-apply). Re-entrant
+        /// calls -- a handler applying fonts lands back in a getter --
+        /// return immediately.
+        /// </summary>
+        private static void VerifyOwned()
+        {
+            if (_verifying)
+            {
+                return;
+            }
+            _verifying = true;
+            try
+            {
+                bool rebuild = false;
+
+                // An owned OS Font has no repairable sub-state: a
+                // destroyed one can only be re-probed. Shared editor
+                // fonts (the bundled TTF, the label font) are persistent
+                // assets and never reach this branch.
+                if (_monoProbed && !ReferenceEquals(_monoFont, null)
+                    && _monoFont == null)
+                {
+                    rebuild = true;
+                }
+
+                if (!rebuild)
+                {
+                    foreach (System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset> entry
+                        in _cjkStyleAssets)
+                    {
+                        if (FontAssetLifecycle.NeedsAttention(entry.Value)
+                            && !FontAssetLifecycle.TryRepair(entry.Value))
+                        {
+                            rebuild = true;
+                            break;
+                        }
+                    }
+                }
+                if (!rebuild && FontAssetLifecycle.NeedsAttention(_cjkUiAsset)
+                    && !FontAssetLifecycle.TryRepair(_cjkUiAsset))
+                {
+                    rebuild = true;
+                }
+
+                if (rebuild)
+                {
+                    InvalidateCaches();
+                }
+                else
+                {
+                    // Cheap, and the only pass that sees atlas pages
+                    // TextCore added lazily since the last transition.
+                    StampOwned();
+                }
+            }
+            catch (System.Exception)
+            {
+                // Never-throw contract: a failed verification must not
+                // take the caller's resolution down with it.
+            }
+            finally
+            {
+                _verifying = false;
+            }
+        }
+
+        /// <summary>
+        /// Re-applies the protective flags to every owned asset,
+        /// covering atlas pages TextCore added lazily since the last
+        /// pass. Run before each Play Mode transition, which is what the
+        /// unflagged objects would not survive.
+        /// </summary>
+        private static void StampOwned()
+        {
+            FontAssetLifecycle.Stamp(_cjkUiAsset);
+            foreach (System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset> entry
+                in _cjkStyleAssets)
+            {
+                FontAssetLifecycle.Stamp(entry.Value);
+            }
+        }
 
         private static Font ResolveMono(out string source, out bool owned)
         {
@@ -440,9 +685,12 @@ namespace Colloid.UitkFontFix
                 {
                     return null;
                 }
-                asset.hideFlags = HideFlags.HideAndDontSave;
-                NameCreatedAsset(asset);
-                HookCleanup();
+                // Adopt stamps HideAndDontSave on the asset AND the
+                // protective flags on its material and atlas page, which
+                // TextCore leaves unflagged (and which a Play Mode
+                // transition would otherwise destroy).
+                FontAssetLifecycle.Adopt(asset);
+                HookEditorEvents();
                 return asset;
             }
             catch (System.Exception)
@@ -454,31 +702,6 @@ namespace Colloid.UitkFontFix
                     Object.DestroyImmediate(asset);
                 }
                 return null;
-            }
-        }
-
-        private static void NameCreatedAsset(UnityEngine.TextCore.Text.FontAsset asset)
-        {
-            try
-            {
-                // Distinguishing info first (narrow panels truncate from
-                // the right), provenance tag last; the actual face names
-                // from faceInfo, so a loose OS match stays visible.
-                asset.name = asset.faceInfo.familyName + " - "
-                    + asset.faceInfo.styleName + " " + CreatedObjectNameTag;
-                if (asset.material != null)
-                {
-                    asset.material.name = asset.name + " Material";
-                }
-                if (asset.atlasTextures != null && asset.atlasTextures.Length > 0
-                    && asset.atlasTextures[0] != null)
-                {
-                    asset.atlasTextures[0].name = asset.name + " Atlas";
-                }
-            }
-            catch (System.Exception)
-            {
-                // Naming is diagnostics-only; never let it fail resolution.
             }
         }
 
@@ -534,7 +757,7 @@ namespace Colloid.UitkFontFix
 
         // -- Cleanup -----------------------------------------------------------
 
-        private static void HookCleanup()
+        private static void HookEditorEvents()
         {
             if (_cleanupHooked)
             {
@@ -542,6 +765,38 @@ namespace Colloid.UitkFontFix
             }
             _cleanupHooked = true;
             AssemblyReloadEvents.beforeAssemblyReload += DestroyOwned;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+        }
+
+        /// <summary>
+        /// Play Mode transitions are where TextCore's unflagged atlas
+        /// material and pages get destroyed. The Exiting* values fire
+        /// before the transition, which is when the protective flags
+        /// must be on every page (including ones TextCore added lazily
+        /// since the last pass). The Entered* values fire on a later
+        /// editor tick and drive a PUSH verification sweep: a consumer
+        /// that applied a font once and never calls the package again
+        /// would otherwise never trigger the access-time check.
+        /// </summary>
+        private static void OnPlayModeStateChanged(PlayModeStateChange change)
+        {
+            try
+            {
+                if (change == PlayModeStateChange.ExitingEditMode
+                    || change == PlayModeStateChange.ExitingPlayMode)
+                {
+                    StampOwned();
+                }
+                else
+                {
+                    VerifyOwned();
+                }
+            }
+            catch (System.Exception)
+            {
+                // An editor callback must never surface an exception
+                // from this package.
+            }
         }
 
         private static void DestroyOwned()
@@ -552,27 +807,47 @@ namespace Colloid.UitkFontFix
             // check falls back to faux rendering, so even the reverse
             // order is benign -- the fixed order just makes that argument
             // unnecessary.
-            if (_cjkUiAsset != null)
-            {
-                Object.DestroyImmediate(_cjkUiAsset);
-            }
+            FontAssetLifecycle.Forget(_cjkUiAsset);
+            SafeDestroy(_cjkUiAsset);
             _cjkUiAsset = null;
             foreach (System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset> entry
                 in _cjkStyleAssets)
             {
-                if (entry.Value != null)
-                {
-                    Object.DestroyImmediate(entry.Value);
-                }
+                FontAssetLifecycle.Forget(entry.Value);
+                SafeDestroy(entry.Value);
             }
             _cjkStyleAssets.Clear();
             _cjkUiFamilyName = null;
-            if (_monoFontOwned && _monoFont != null)
+            if (_monoFontOwned)
             {
-                Object.DestroyImmediate(_monoFont);
+                SafeDestroy(_monoFont);
             }
             _monoFont = null;
             _monoFontOwned = false;
+        }
+
+        /// <summary>
+        /// Destroys a live owned object, absorbing anything TextCore's
+        /// own teardown might throw. FontAsset.OnDestroy unconditionally
+        /// destroys its material, so disposing an asset whose material
+        /// already died reaches engine code this package does not
+        /// control -- and this runs from settings setters, which must
+        /// not surface an exception.
+        /// </summary>
+        private static void SafeDestroy(Object obj)
+        {
+            try
+            {
+                if (obj != null)
+                {
+                    Object.DestroyImmediate(obj);
+                }
+            }
+            catch (System.Exception)
+            {
+                // Losing one transient object is strictly better than
+                // breaking the caller.
+            }
         }
 
         // -- Probe internals ---------------------------------------------------

@@ -84,9 +84,22 @@ namespace Colloid.UitkFontFix
             {
                 sb.Append("population mode: ")
                     .Append(cjk.atlasPopulationMode.ToString()).Append('\n');
+                sb.Append("usable         : ")
+                    .Append(FontAssetLifecycle.IsUsable(cjk) ? "yes"
+                        : "NO (material or an in-use atlas page was"
+                            + " destroyed; repaired on next access)")
+                    .Append('\n');
+                Material material = cjk.material;
+                sb.Append("material       : ")
+                    .Append(material != null
+                        ? material.name + " [" + material.hideFlags.ToString() + "]"
+                        : "(destroyed or missing)")
+                    .Append('\n');
                 Texture2D[] pages = cjk.atlasTextures;
                 int pageCount = pages != null ? pages.Length : 0;
-                sb.Append("atlas pages    : ").Append(pageCount).Append('\n');
+                int usedPages = cjk.atlasTextureCount;
+                sb.Append("atlas pages    : ").Append(pageCount)
+                    .Append(" (in use: ").Append(usedPages).Append(")\n");
                 if (pageCount > 0 && pages[0] != null)
                 {
                     sb.Append("atlas size     : ")
@@ -96,10 +109,20 @@ namespace Colloid.UitkFontFix
                 for (int i = 0; i < pageCount; i++)
                 {
                     // Lazily-added pages keep TextCore default names (no
-                    // kit tag); listing them here keeps them attributable.
-                    sb.Append("  page ").Append(i).Append(": ")
-                        .Append(pages[i] != null ? pages[i].name : "(null)")
-                        .Append('\n');
+                    // kit tag); listing them here keeps them
+                    // attributable. Slots past the in-use count are
+                    // unfilled array growth, not damage.
+                    sb.Append("  page ").Append(i).Append(": ");
+                    if (pages[i] != null)
+                    {
+                        sb.Append(pages[i].name).Append(" [")
+                            .Append(pages[i].hideFlags.ToString()).Append(']');
+                    }
+                    else
+                    {
+                        sb.Append(i < usedPages ? "(destroyed)" : "(unused slot)");
+                    }
+                    sb.Append('\n');
                 }
                 if (pageCount > 1)
                 {
