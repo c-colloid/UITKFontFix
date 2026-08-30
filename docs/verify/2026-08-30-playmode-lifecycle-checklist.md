@@ -4,18 +4,24 @@
 静的ゲート(ASCII監査・meta整合・JSON検証・一次ソースでのAPI確認)はクラウド側で
 実施済み。以下は **Unity 実機/CI でしか確認できない項目**。
 
-## A. CI(compile + EditMode)
+## A. CI(compile + EditMode)= **合格**
 
-- 手順: GitHub の Actions タブ → CI → Run workflow → ブランチ
-  `claude/playmode-missing-reference-exception-ngmi6z` を選んで実行
-  (エージェントからの `workflow_dispatch` は 403: Actions 書き込み権限なし)。
-  release ジョブは `github.ref == 'refs/heads/main'` で守られているため、
-  ブランチ実行ではタグもリリースも作られない。
-- 期待: 失敗0。新規 `FontAssetLifecycleTests` は Linux コンテナに DejaVu /
-  Liberation があるため実走する(直近 main 実測: total=115 / passed=112 /
-  failed=0 / skipped=3。スキップはWindows限定2件+CJK/mono両解決が要る1件)。
-  0.4.0 では 15 件前後増える見込み。
-- 記録先: 結果(total/passed/failed/skipped と run URL)を本ファイルに追記する。
+- 実行: ユーザーによる `workflow_dispatch`
+  ([run 33338463574](https://github.com/c-colloid/UITKFontFix/actions/runs/33338463574)、
+  対象コミット `c12a82b` = 実装コミット、2026-08-30)。
+  release ジョブは想定どおり skipped(`github.ref == 'refs/heads/main'` ガード)。
+- 結果: **`total="131" passed="128" failed="0" inconclusive="0" skipped="3"`**
+  - 直前の main 実測は total=115 / passed=112 / skipped=3
+    ([run 33299071172](https://github.com/c-colloid/UITKFontFix/actions/runs/33299071172))
+  - **+16 件がすべて追加分で、すべて実走して合格**。新規
+    `FontAssetLifecycleTests` は16件ちょうどで、`Assert.Ignore` は0件
+    → Linux コンテナ(CJKフォント無し)でも DejaVu / Liberation に束縛でき、
+    フラグ付与・破壊シミュレーション・**その場修復**・イベント契約が
+    実オブジェクトに対して検証されたことになる
+  - skipped は据え置き3件(Windows限定2件+CJK/mono両解決が要る1件)で、
+    今回の変更による新規スキップは無い
+- これで CLAUDE.md §2 のゲート(コンパイル+EditMode 全グリーン)は満たした。
+  ただし下の B は依然として未実施。
 
 ## B. インタラクティブ・エディタ(実機でのみ確認可能)
 
