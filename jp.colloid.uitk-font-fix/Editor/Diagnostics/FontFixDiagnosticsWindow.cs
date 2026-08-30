@@ -27,6 +27,8 @@ namespace Colloid.UitkFontFix
             Rebuild();
         }
 
+        private TextField _report;
+
         private void Rebuild()
         {
             VisualElement root = rootVisualElement;
@@ -62,21 +64,42 @@ namespace Colloid.UitkFontFix
             var scroll = new ScrollView();
             scroll.style.flexGrow = 1f;
 
-            var report = new TextField
+            // Edit-and-reprobe loop lives HERE so font picking can be
+            // iterated in one window; "Save to project" writes the same
+            // file the Project Settings pane manages. Refreshing only
+            // the report keeps the foldout and half-edited fields
+            // intact.
+            var editSection = new Foldout
+            {
+                text = "Edit configuration",
+                value = false
+            };
+            editSection.Add(FontFixSettingsUi.CreateForm(RefreshReport));
+            scroll.Add(editSection);
+
+            _report = new TextField
             {
                 multiline = true,
                 isReadOnly = true,
                 value = FontFixDiagnostics.BuildReport()
             };
-            FontFix.ApplyMono(report);
-            scroll.Add(report);
+            FontFix.ApplyMono(_report);
+            scroll.Add(_report);
             root.Add(scroll);
+        }
+
+        private void RefreshReport()
+        {
+            if (_report != null)
+            {
+                _report.value = FontFixDiagnostics.BuildReport();
+            }
         }
 
         private void OnRefreshClicked()
         {
             FontFix.ResetCaches();
-            Rebuild();
+            RefreshReport();
         }
 
         private void OnCopyClicked()

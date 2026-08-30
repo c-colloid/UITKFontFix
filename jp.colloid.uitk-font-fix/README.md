@@ -492,6 +492,31 @@ passed the face probe, `label` = default editor label font (last
 resort), `osasset:` = DynamicOS `FontAsset` created from an installed
 family, `(none)` = nothing resolved (apply helpers no-op).
 
+### 8. Configuring fonts without code (Project Settings)
+
+Everything `FontFixSettings` exposes can also be edited from the
+editor UI, no code required. Open **Edit > Project Settings > UITK
+Font Fix**: candidate lists are edited one family name per line, and
+three buttons cover the lifecycle -- *Apply (this session)* pushes the
+values into the running editor, *Save to project* also writes them to
+`ProjectSettings/Packages/jp.colloid.uitk-font-fix/settings.json`
+(versioned with your project, so the whole team gets them), and *Use
+package defaults* resets everything and deletes that file.
+
+The diagnostics window carries the same form in its *Edit
+configuration* foldout, right next to the resolution report -- edit,
+*Apply*, *Re-probe*, read the result, repeat; once you like what you
+see, *Save to project* from there writes the same file.
+
+How it takes effect: the saved file is applied once per domain load,
+BEFORE consumer code runs, so code that assigns `FontFixSettings`
+afterwards deliberately wins (explicit code is the stronger signal).
+The diagnostics report's "Project settings file" section shows whether
+the effective values are still in sync with the file. As always,
+changes affect every window that calls the apply helpers; windows
+already open pick them up when rebuilt or reopened, and nothing
+outside this package's calls is touched.
+
 ## API reference
 
 Everything lives in the `Colloid.UitkFontFix` namespace. All resolvers
@@ -579,6 +604,16 @@ consumer test assemblies (see Recipe 6).
 | `AuditConstructedCodepoints(string, string, int[])` | Flags codepoints constructed in source outside the whitelist. `(char)` casts of U+FE0F/U+FE0E/U+FEFF are exempt: sanitizers legitimately compare against those values, and a comparison never renders. |
 | `AuditVariationSelectors(string, string)` | Flags literal U+FE0F/U+FE0E and their escape forms. Ordinal scans on purpose -- culture-sensitive searches treat selectors as collation-ignorable. |
 | `AuditAsciiOnly(string, byte[])` | Flags the first non-ASCII byte per file (strict-ASCII source policy keeps glyph content reviewable and diff-safe). |
+
+**`FontFixProjectSettings`**
+
+| Member | Behavior |
+| --- | --- |
+| `FilePath` / `Exists` | The project-shared settings file (`ProjectSettings/Packages/jp.colloid.uitk-font-fix/settings.json`) and whether this project pins its configuration. |
+| `Save()` | Snapshots the current effective `FontFixSettings` values into the file (returns false instead of throwing on IO failure). |
+| `TryLoadAndApply()` | Applies the file when present and parseable; runs automatically once per domain load. Corrupt files are ignored. |
+| `Delete()` | Removes the file so the project tracks package defaults again (in-memory settings unchanged). |
+| `MatchesCurrentSettings()` | True when the file exists and matches the effective values -- the drift signal the diagnostics report shows. |
 
 **`FontFixDiagnostics`**
 

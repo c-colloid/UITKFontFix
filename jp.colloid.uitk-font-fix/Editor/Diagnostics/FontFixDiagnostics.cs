@@ -23,6 +23,7 @@ namespace Colloid.UitkFontFix
 
             AppendResolutionSection(sb);
             AppendAtlasSection(sb);
+            AppendProjectFileSection(sb);
             AppendEnvironmentSection(sb);
             AppendKnownTrapsSection(sb);
             return sb.ToString();
@@ -174,6 +175,39 @@ namespace Colloid.UitkFontFix
                 sb.Append("faces probe threw ")
                     .Append(e.GetType().Name).Append('\n');
             }
+        }
+
+        private static void AppendProjectFileSection(StringBuilder sb)
+        {
+            sb.Append("-- Project settings file --\n");
+            try
+            {
+                sb.Append("path  : ")
+                    .Append(FontFixProjectSettings.FilePath).Append('\n');
+                if (!FontFixProjectSettings.Exists)
+                {
+                    sb.Append("state : absent (package defaults / code"
+                        + " configuration only)\n");
+                }
+                else if (FontFixProjectSettings.MatchesCurrentSettings())
+                {
+                    sb.Append("state : present, in sync with the current"
+                        + " values\n");
+                }
+                else
+                {
+                    sb.Append("state : present but DIFFERS from the"
+                        + " current values (changed in a settings UI"
+                        + " without saving, or overridden by code after"
+                        + " load)\n");
+                }
+            }
+            catch (System.Exception e)
+            {
+                sb.Append("file probe threw ")
+                    .Append(e.GetType().Name).Append('\n');
+            }
+            sb.Append('\n');
         }
 
         private static void AppendEnvironmentSection(StringBuilder sb)

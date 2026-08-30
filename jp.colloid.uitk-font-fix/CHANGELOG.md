@@ -3,6 +3,23 @@
 All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-08-30
+
+### Added
+
+- No-code configuration: a Project Settings pane (Edit > Project
+  Settings > UITK Font Fix) and the same form inside the diagnostics
+  window's "Edit configuration" foldout. Apply pushes values into the
+  session; Save to project persists them to
+  `ProjectSettings/Packages/jp.colloid.uitk-font-fix/settings.json`
+  (versioned, team-shared) via the new `FontFixProjectSettings` API;
+  Use package defaults resets and deletes the file.
+- The saved file is applied once per domain load, before consumer
+  code; later `FontFixSettings` assignments from code win by design.
+  The diagnostics report gains a "Project settings file" section that
+  shows presence and drift, and the diagnostics Re-probe now
+  refreshes the report in place (edits in the foldout survive).
+
 ## [0.2.0] - 2026-08-30
 
 ### Added

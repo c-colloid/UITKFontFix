@@ -483,6 +483,32 @@ cjk-ui candidates:
 `osasset:` = インストール済みファミリーから作った DynamicOS の
 `FontAsset`、`(none)` = 何も解決できなかった(適用ヘルパは何もしません)。
 
+### 8. コードを書かずにフォントを設定する(Project Settings)
+
+`FontFixSettings` で設定できることは、すべてエディタUIからも設定
+できます。**Edit > Project Settings > UITK Font Fix** を開いてください。
+候補リストは1行に1ファミリー名で編集し、ボタンは3つです —
+*Apply (this session)* は今のエディタセッションに反映、
+*Save to project* はさらに
+`ProjectSettings/Packages/jp.colloid.uitk-font-fix/settings.json`
+に書き出します(プロジェクトと一緒にバージョン管理されるので、チーム
+全員に共有されます)。*Use package defaults* はすべてを既定に戻して
+このファイルを削除します。
+
+診断ウィンドウにも同じフォームが *Edit configuration* の折りたたみに
+入っています。解決レポートのすぐ隣なので、編集 → *Apply* →
+*Re-probe* → 結果を見る、を1画面で回せます。気に入る設定になったら、
+そこから *Save to project* すれば同じファイルに保存されます。
+
+反映のしくみ: 保存されたファイルはドメインロードごとに1回、
+**利用側のコードより先に**適用されます。そのため、後から
+`FontFixSettings` に代入するコードがあればそちらが勝ちます(明示的な
+コードのほうが強い意思表示だ、という意図的な設計です)。実効値が
+ファイルとズレていないかは、診断レポートの「Project settings file」
+セクションで確認できます。適用範囲はこれまでどおり: 適用ヘルパを
+呼んでいるウィンドウすべてに効き、開きっぱなしのウィンドウは再構築か
+再オープンで反映され、このパッケージを使っていないUIには影響しません。
+
 ## API リファレンス
 
 すべて `Colloid.UitkFontFix` 名前空間にあります。リゾルバはどれも結果を
@@ -572,6 +598,16 @@ cjk-ui candidates:
 | `AuditConstructedCodepoints(string, string, int[])` | ソース中で構築されるコードポイントのうちホワイトリスト外のものを検出。U+FE0F/U+FE0E/U+FEFF の `(char)` キャストは除外されます(サニタイザが除去のために比較する正当な用途で、比較は描画されないため)。 |
 | `AuditVariationSelectors(string, string)` | 異体字セレクタのリテラルとエスケープを検出。序数(ordinal)走査なのは意図的です — カルチャ依存の検索はセレクタを照合上無視してしまいます。 |
 | `AuditAsciiOnly(string, byte[])` | ファイルごとに最初の非 ASCII バイトを検出(厳格 ASCII のソース方針は、グリフの中身をレビューと diff で追える状態に保ちます)。 |
+
+**`FontFixProjectSettings`**
+
+| メンバー | 動作 |
+| --- | --- |
+| `FilePath` / `Exists` | プロジェクト共有の設定ファイル(`ProjectSettings/Packages/jp.colloid.uitk-font-fix/settings.json`)のパスと、その有無。 |
+| `Save()` | 現在の実効値をファイルに書き出します(IO失敗時は例外ではなく false)。 |
+| `TryLoadAndApply()` | ファイルがあれば適用します。ドメインロードごとに自動で1回走ります。壊れたファイルは無視。 |
+| `Delete()` | ファイルを削除し、プロジェクトを既定値追従に戻します(メモリ上の設定は変えません)。 |
+| `MatchesCurrentSettings()` | ファイルが存在し、実効値と一致していれば true。診断レポートが表示する「ズレ」検出の実体です。 |
 
 **`FontFixDiagnostics`**
 
