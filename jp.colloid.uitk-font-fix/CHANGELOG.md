@@ -3,6 +3,33 @@
 All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-09-08
+
+### Fixed
+
+- Fonts resolved from an OS family no longer break when a scene is
+  loaded (File > New Scene, opening a scene) or on other editor events
+  that destroy unflagged objects, and no longer need a re-probe to
+  recover. Three gaps in the 0.4.0 lifecycle policy: (1) atlas pages
+  TextCore adds lazily during rendering were re-flagged only before a
+  Play Mode transition or on a cached access, so a consumer that
+  applied the font once left every later page at `HideFlags.None`
+  until the next scene load destroyed it -- and Japanese UI text grows
+  several pages, since `CreateFontAsset` samples at 90 pt into
+  1024x1024 pages. Pages are now flagged within one editor update
+  (a per-tick page-count comparison, no native call). (2) Only Play
+  Mode had a push sweep; the package now verifies after each scene
+  load and at a low rate from the editor update. (3) An in-place
+  repair kept a surviving material, but UI Toolkit regenerates an
+  element's cached text mesh only when its generation-settings hash
+  changes, and that hash covers the font asset and its material. The
+  repaired asset therefore kept drawing stale mesh data that pointed
+  at the destroyed page, throwing `NullReferenceException` from
+  `UIRStylePainter.DrawTextInfo` (`Material.mainTexture` reads back as
+  null for a destroyed texture) until a re-probe replaced the instance.
+  The repair now always installs a new material and marks every
+  editor-window text element drawn with the asset for repaint.
+
 ## [0.4.0] - 2026-08-30
 
 ### Fixed

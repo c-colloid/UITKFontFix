@@ -43,15 +43,18 @@ says which.
   *Steered, not solved:* the policy helpers take the language as a
   parameter, pushing the query to a safe callback -- calling it there
   is still on you (Recipe 3 shows the pattern).
-- **A font built from an OS family dies across Play Mode.**
-  `FontAsset.CreateFontAsset` leaves the atlas material and atlas
-  textures it creates at `HideFlags.None`, so the editor destroys them
-  on a Play Mode transition while the `FontAsset` itself survives --
-  after which every draw throws `MissingReferenceException` from
-  inside TextCore. *Avoided automatically:* the resolvers flag those
-  child objects, re-flag pages TextCore adds later, and repair an
-  asset in place if it is damaged anyway, so the elements you already
-  applied keep working (see item 12 under Verified behavior).
+- **A font built from an OS family dies across Play Mode or a scene
+  load.** `FontAsset.CreateFontAsset` leaves the atlas material and
+  atlas textures it creates at `HideFlags.None`, so the editor destroys
+  them on a Play Mode transition, a New Scene or an opened scene while
+  the `FontAsset` itself survives -- after which every draw throws
+  `MissingReferenceException` from inside TextCore, or
+  `NullReferenceException` from the UI Toolkit renderer when only an
+  atlas page died. *Avoided automatically:* the resolvers flag those
+  child objects, flag every page TextCore adds later within one editor
+  update, and repair an asset in place if it is damaged anyway, so the
+  elements you already applied keep working (see item 12 under
+  Verified behavior).
 
 `FontFix` packages the verified workarounds behind a small facade:
 resolvers that cache, never throw, and report which candidate won;
@@ -540,7 +543,7 @@ cache their result, **never throw**, and are safe in batch mode.
 | --- | --- |
 | `EditorMonoFont` | Resolved monospace `Font`: bundled RobotoMono first, face-probed single-name OS fonts second, default label font last. Cached; effectively never null in a functioning editor. |
 | `EditorMonoFontSource` | Which mono candidate won: `"editor:<path>"`, `"os:<name>"`, `"label"`, or empty. |
-| `CjkUiFontAsset` | Latin+CJK `FontAsset` (DynamicOS mode) from the first installed candidate, or null when none resolves. Glyphs populate lazily at render time; the transient asset is destroyed before every domain reload. Never returns an asset whose atlas material or in-use atlas pages were destroyed (a Play Mode transition is the usual cause): it is repaired in place, so the instance -- and every element already using it -- stays valid. Read it each time instead of caching the `FontAsset` in your own field. |
+| `CjkUiFontAsset` | Latin+CJK `FontAsset` (DynamicOS mode) from the first installed candidate, or null when none resolves. Glyphs populate lazily at render time; the transient asset is destroyed before every domain reload. Never returns an asset whose atlas material or in-use atlas pages were destroyed (a Play Mode transition or a scene load): it is repaired in place, so the instance -- and every element already using it -- stays valid. Read it each time instead of caching the `FontAsset` in your own field. |
 | `CjkUiFontSource` | Which CJK candidate won: `"osasset:<name>"`, or empty. |
 | `ApplyMono(VisualElement)` | Inline `unityFontDefinition` assignment on one **leaf**; survives any ancestor `ApplyCjkUi`. No-ops (keeps the inherited font) on null or when nothing resolved. |
 | `ApplyCjkUi(VisualElement)` | Font assignment on a **container root** that descendants inherit. No-ops on null or when nothing resolved -- callers must not assume the font changed. |
@@ -697,16 +700,32 @@ non-obvious design choice above traces back to one of them.
     `HideFlags.DontSave` on the asset **and** on `atlasTextures[0]`
     **and** on `material`. `HideFlags.DontSave` is documented as "will
     not be destroyed when a new Scene is loaded", which a Play Mode
-    transition performs: an unflagged child dies, the flagged
-    `FontAsset` survives holding a destroyed reference, and the next
-    draw throws `MissingReferenceException` from inside TextCore. A
-    `FontAsset` assigned directly through `unityFontDefinition` never
-    passes through Unity's stamping code, so this is the package's
-    responsibility: it flags the children at creation, re-flags them
-    before every Play Mode transition (TextCore adds atlas pages
-    lazily, unflagged), verifies liveness on every cached access and
-    on entering/leaving Play Mode, and repairs a damaged asset **in
-    place** so already-applied elements heal without re-applying.
+    transition, File > New Scene and opening a scene all perform: an
+    unflagged child dies, the flagged `FontAsset` survives holding a
+    destroyed reference, and the next draw throws
+    `MissingReferenceException` from inside TextCore (material dead)
+    or `NullReferenceException` from `UIRStylePainter.DrawTextInfo`
+    (only a page dead: `Material.mainTexture` reads back as null). The
+    page case is the common one -- `CreateFontAsset(family, style)`
+    samples at 90 pt into 1024x1024 pages, about 80 CJK glyphs each,
+    so Japanese UI text grows several pages, all added lazily during
+    rendering and all born unflagged. A `FontAsset` assigned directly
+    through `unityFontDefinition` never passes through Unity's stamping
+    code, so this is the package's responsibility: it flags the
+    children at creation, flags every later page within one editor
+    update (the page count is compared each tick, no native call),
+    verifies liveness on every cached access, after each scene load,
+    on entering/leaving Play Mode and at a low rate from the editor
+    update, and repairs a damaged asset **in place** so
+    already-applied elements heal without re-applying. The repair
+    always installs a new material even when the old one survived: UI
+    Toolkit regenerates an element's cached text mesh only when its
+    generation-settings hash changes, and that hash covers the font
+    asset and its material -- the one thing an in-place repair can
+    change. Elements drawn with the repaired asset are then marked for
+    repaint, because an element whose last draw threw is no longer
+    dirty and would otherwise stay broken until something else touched
+    it.
 
 ## Unity version compatibility
 
