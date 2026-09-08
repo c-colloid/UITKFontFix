@@ -408,6 +408,153 @@ namespace Colloid.UitkFontFix.Tests
 
         // -- Helpers -----------------------------------------------------------
 
+        // -- Scene loads and lazily added pages --------------------------------
+
+        [Test]
+        public void TryRepair_ReplacesTheMaterial_EvenWhenOnlyAPageDied()
+        {
+            UnityEngine.TextCore.Text.FontAsset asset = FontFix.CjkUiFontAsset;
+            Material survivor = asset.material;
+            Object.DestroyImmediate(asset.atlasTextures[0]);
+            Assert.IsTrue(FontAssetLifecycle.NeedsAttention(asset),
+                "a dead page with a live material is damage");
+
+            Assert.IsTrue(FontAssetLifecycle.TryRepair(asset));
+
+            Assert.IsTrue(FontAssetLifecycle.IsUsable(asset));
+            Assert.AreNotSame(survivor, asset.material,
+                "UI Toolkit regenerates an element's cached text mesh only"
+                + " when its generation-settings hash changes, and that hash"
+                + " covers the material: keeping the survivor would leave"
+                + " already-drawn elements pointing at the dead page");
+            Assert.IsTrue(survivor == null,
+                "the replaced material must be destroyed, not leaked");
+            Assert.AreSame(asset.atlasTextures[0], asset.material.mainTexture,
+                "the new material must point at the live page 0");
+        }
+
+        [Test]
+        public void LazyPages_AreBornUnflagged_AndTheGuardTickStampsThem()
+        {
+            UnityEngine.TextCore.Text.FontAsset asset = FontFix.CjkUiFontAsset;
+            LogAssert.ignoreFailingMessages = true;
+            try
+            {
+                asset.TryAddCharacters(ManyDistinctCharacters());
+            }
+            catch (System.Exception e)
+            {
+                Assert.Ignore("TryAddCharacters is unavailable here: " + e.GetType().Name);
+            }
+            int used = asset.atlasTextureCount;
+            if (used < 2)
+            {
+                Assert.Ignore("the atlas did not grow past one page on this machine");
+            }
+
+            Texture2D[] pages = asset.atlasTextures;
+            bool sawUnflagged = false;
+            for (int i = 1; i < used; i++)
+            {
+                Assert.IsNotNull(pages[i], "page " + i + " must be alive");
+                if (pages[i].hideFlags == HideFlags.None)
+                {
+                    sawUnflagged = true;
+                }
+            }
+            Assert.IsTrue(sawUnflagged,
+                "TextCore creates later pages unflagged; if this ever stops"
+                + " holding, the guard tick is no longer needed");
+
+            FontFix.GuardTick();
+
+            for (int i = 0; i < used; i++)
+            {
+                Assert.AreEqual(HideFlags.DontSave,
+                    pages[i].hideFlags & HideFlags.DontSave,
+                    "page " + i + " must be protected after one guard tick");
+            }
+        }
+
+        [Test]
+        public void NewScene_KeepsStampedChildren_AndKillsUnflaggedObjects()
+        {
+            UnityEngine.TextCore.Text.FontAsset asset = FontFix.CjkUiFontAsset;
+            Material material = asset.material;
+            Texture2D page = asset.atlasTextures[0];
+            // Control: what TextCore's lazily added pages look like
+            // before the guard stamps them.
+            var control = new Texture2D(1, 1, TextureFormat.Alpha8, false);
+
+            UnityEditor.SceneManagement.EditorSceneManager.NewScene(
+                UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,
+                UnityEditor.SceneManagement.NewSceneMode.Single);
+
+            Assert.IsTrue(control == null,
+                "a scene load destroys HideFlags.None objects -- the"
+                + " mechanism the whole guard exists for");
+            Assert.IsTrue(material != null, "the stamped material survives");
+            Assert.IsTrue(page != null, "the stamped page survives");
+            Assert.IsTrue(FontAssetLifecycle.IsUsable(asset));
+        }
+
+        [Test]
+        public void NewScene_SweepsAndRepairsWithoutAnyGetterAccess()
+        {
+            UnityEngine.TextCore.Text.FontAsset asset = FontFix.CjkUiFontAsset;
+            DestroyChildren(asset);
+            Assert.IsFalse(FontAssetLifecycle.IsUsable(asset));
+
+            UnityEditor.SceneManagement.EditorSceneManager.NewScene(
+                UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,
+                UnityEditor.SceneManagement.NewSceneMode.Single);
+
+            Assert.IsTrue(FontAssetLifecycle.IsUsable(asset),
+                "the scene hook must sweep and repair on its own: a"
+                + " consumer that applied the font once never reads the"
+                + " getter again");
+            Assert.AreSame(asset, FontFix.CjkUiFontAsset);
+        }
+
+        [Test]
+        public void GuardTick_RepairsDamage_WithoutAnyGetterAccess()
+        {
+            UnityEngine.TextCore.Text.FontAsset asset = FontFix.CjkUiFontAsset;
+            DestroyChildren(asset);
+
+            // The liveness check is rate limited; a fresh interval has
+            // elapsed for sure only after a second tick past the window.
+            FontFix.GuardTick();
+            System.Threading.Thread.Sleep(300);
+            FontFix.GuardTick();
+
+            Assert.IsTrue(FontAssetLifecycle.IsUsable(asset));
+            Assert.AreSame(asset, FontFix.CjkUiFontAsset);
+        }
+
+        private static string ManyDistinctCharacters()
+        {
+            // Built from code points (sources stay ASCII): printable
+            // Basic Latin, Latin-1 letters, Greek and Cyrillic -- around
+            // 280 glyphs, several pages at the 90 pt sampling size
+            // CreateFontAsset uses. Ranges a family lacks are skipped by
+            // TextCore, which only shrinks the page count.
+            var sb = new System.Text.StringBuilder();
+            AppendRange(sb, 0x21, 0x7E);
+            AppendRange(sb, 0xC0, 0xFF);
+            AppendRange(sb, 0x391, 0x3C9);
+            AppendRange(sb, 0x410, 0x44F);
+            return sb.ToString();
+        }
+
+        private static void AppendRange(System.Text.StringBuilder sb, int first, int last)
+        {
+            for (int cp = first; cp <= last; cp++)
+            {
+                sb.Append((char)cp);
+            }
+        }
+
         private static void DestroyChildren(
             UnityEngine.TextCore.Text.FontAsset asset)
         {

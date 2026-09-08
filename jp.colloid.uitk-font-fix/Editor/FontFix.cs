@@ -62,6 +62,11 @@ namespace Colloid.UitkFontFix
 
         private static bool _cleanupHooked;
 
+        // Editor-update guard: liveness is re-checked at most this often
+        // (seconds); the page-count stamp runs every tick and is free.
+        private const double LivenessCheckInterval = 0.25;
+        private static double _nextLivenessCheck;
+
         // Guards against re-entering the verify/rebuild path from a
         // getter reached inside it (a CachesInvalidated handler that
         // applies fonts does exactly that).
@@ -525,23 +530,42 @@ namespace Colloid.UitkFontFix
                     rebuild = true;
                 }
 
+                System.Collections.Generic.List<UnityEngine.TextCore.Text.FontAsset> repaired = null;
                 if (!rebuild)
                 {
                     foreach (System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset> entry
                         in _cjkStyleAssets)
                     {
-                        if (FontAssetLifecycle.NeedsAttention(entry.Value)
-                            && !FontAssetLifecycle.TryRepair(entry.Value))
+                        if (!FontAssetLifecycle.NeedsAttention(entry.Value))
+                        {
+                            continue;
+                        }
+                        if (!FontAssetLifecycle.TryRepair(entry.Value))
                         {
                             rebuild = true;
                             break;
                         }
+                        if (repaired == null)
+                        {
+                            repaired = new System.Collections.Generic.List<UnityEngine.TextCore.Text.FontAsset>();
+                        }
+                        repaired.Add(entry.Value);
                     }
                 }
-                if (!rebuild && FontAssetLifecycle.NeedsAttention(_cjkUiAsset)
-                    && !FontAssetLifecycle.TryRepair(_cjkUiAsset))
+                if (!rebuild && FontAssetLifecycle.NeedsAttention(_cjkUiAsset))
                 {
-                    rebuild = true;
+                    if (!FontAssetLifecycle.TryRepair(_cjkUiAsset))
+                    {
+                        rebuild = true;
+                    }
+                    else
+                    {
+                        if (repaired == null)
+                        {
+                            repaired = new System.Collections.Generic.List<UnityEngine.TextCore.Text.FontAsset>();
+                        }
+                        repaired.Add(_cjkUiAsset);
+                    }
                 }
 
                 if (rebuild)
@@ -553,6 +577,13 @@ namespace Colloid.UitkFontFix
                     // Cheap, and the only pass that sees atlas pages
                     // TextCore added lazily since the last transition.
                     StampOwned();
+                    if (repaired != null)
+                    {
+                        for (int i = 0; i < repaired.Count; i++)
+                        {
+                            RepaintElementsUsing(repaired[i]);
+                        }
+                    }
                 }
             }
             catch (System.Exception)
@@ -579,6 +610,125 @@ namespace Colloid.UitkFontFix
                 in _cjkStyleAssets)
             {
                 FontAssetLifecycle.Stamp(entry.Value);
+            }
+        }
+
+        /// <summary>
+        /// Editor-update guard. Two jobs: (1) every tick, stamp atlas
+        /// pages TextCore added since the last stamp -- they are born
+        /// unflagged during rendering, and the next scene load would
+        /// destroy them; a consumer that applied the font once never
+        /// calls back to trigger the access-time stamp, and no editor
+        /// event fires between the page add and the load. (2) At a low
+        /// rate, verify liveness, so damage from a path without a
+        /// dedicated hook (the scene events and Play Mode have theirs)
+        /// is still repaired within a fraction of a second.
+        /// </summary>
+        internal static void GuardTick()
+        {
+            if (_verifying)
+            {
+                return;
+            }
+            try
+            {
+                FontAssetLifecycle.StampNewPages(_cjkUiAsset);
+                foreach (System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset> entry
+                    in _cjkStyleAssets)
+                {
+                    FontAssetLifecycle.StampNewPages(entry.Value);
+                }
+
+                double now = EditorApplication.timeSinceStartup;
+                if (now < _nextLivenessCheck)
+                {
+                    return;
+                }
+                _nextLivenessCheck = now + LivenessCheckInterval;
+                if (AnyOwnedNeedsAttention())
+                {
+                    VerifyOwned();
+                }
+            }
+            catch (System.Exception)
+            {
+                // An editor callback must never surface an exception
+                // from this package.
+            }
+        }
+
+        private static bool AnyOwnedNeedsAttention()
+        {
+            if (_monoProbed && _monoFontOwned && !ReferenceEquals(_monoFont, null)
+                && _monoFont == null)
+            {
+                return true;
+            }
+            if (FontAssetLifecycle.NeedsAttention(_cjkUiAsset))
+            {
+                return true;
+            }
+            foreach (System.Collections.Generic.KeyValuePair<string, UnityEngine.TextCore.Text.FontAsset> entry
+                in _cjkStyleAssets)
+            {
+                if (FontAssetLifecycle.NeedsAttention(entry.Value))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Asks every editor-window text element drawn with the asset to
+        /// regenerate. An in-place repair swaps the asset's material,
+        /// which is what invalidates UI Toolkit's cached text mesh (its
+        /// generation-settings hash covers the material), but the cache
+        /// is only consulted on a repaint -- and an element whose last
+        /// draw threw is no longer dirty, so nothing would repaint it.
+        /// resolvedStyle carries the computed value, so elements that
+        /// inherit the definition from an ApplyCjkUi root are covered.
+        /// Repairs are rare; walking every window is affordable.
+        /// </summary>
+        private static void RepaintElementsUsing(UnityEngine.TextCore.Text.FontAsset asset)
+        {
+            if (asset == null)
+            {
+                return;
+            }
+            EditorWindow[] windows;
+            try
+            {
+                windows = Resources.FindObjectsOfTypeAll<EditorWindow>();
+            }
+            catch (System.Exception)
+            {
+                return;
+            }
+            for (int i = 0; i < windows.Length; i++)
+            {
+                try
+                {
+                    VisualElement root = windows[i] != null
+                        ? windows[i].rootVisualElement
+                        : null;
+                    if (root == null || root.panel == null)
+                    {
+                        continue;
+                    }
+                    root.Query<TextElement>().ForEach(element =>
+                    {
+                        if (ReferenceEquals(
+                            element.resolvedStyle.unityFontDefinition.fontAsset, asset))
+                        {
+                            element.MarkDirtyRepaint();
+                        }
+                    });
+                }
+                catch (System.Exception)
+                {
+                    // One window's tree must not stop the sweep.
+                }
             }
         }
 
@@ -766,6 +916,44 @@ namespace Colloid.UitkFontFix
             _cleanupHooked = true;
             AssemblyReloadEvents.beforeAssemblyReload += DestroyOwned;
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            EditorApplication.update += GuardTick;
+            UnityEditor.SceneManagement.EditorSceneManager.newSceneCreated += OnNewSceneCreated;
+            UnityEditor.SceneManagement.EditorSceneManager.sceneOpened += OnSceneOpened;
+        }
+
+        /// <summary>
+        /// A scene load is the other event (besides a Play Mode
+        /// transition) that destroys unflagged objects, and it has no
+        /// "before" hook the package could stamp from. These fire after
+        /// the load and before the next repaint, which is where a PUSH
+        /// sweep repairs whatever the guard tick did not get to stamp.
+        /// </summary>
+        private static void OnNewSceneCreated(
+            UnityEngine.SceneManagement.Scene scene,
+            UnityEditor.SceneManagement.NewSceneSetup setup,
+            UnityEditor.SceneManagement.NewSceneMode mode)
+        {
+            SweepAfterLoad();
+        }
+
+        private static void OnSceneOpened(
+            UnityEngine.SceneManagement.Scene scene,
+            UnityEditor.SceneManagement.OpenSceneMode mode)
+        {
+            SweepAfterLoad();
+        }
+
+        private static void SweepAfterLoad()
+        {
+            try
+            {
+                VerifyOwned();
+            }
+            catch (System.Exception)
+            {
+                // An editor callback must never surface an exception
+                // from this package.
+            }
         }
 
         /// <summary>

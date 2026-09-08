@@ -61,6 +61,12 @@ namespace Colloid.UitkFontFix
         private static readonly Dictionary<int, MaterialTemplate> _templates =
             new Dictionary<int, MaterialTemplate>();
 
+        // Used-page count at the last stamp, keyed by instance id. Lets
+        // the per-tick guard skip every asset whose atlas did not grow
+        // with one dictionary lookup and no native call.
+        private static readonly Dictionary<int, int> _stampedPageCounts =
+            new Dictionary<int, int>();
+
         // A repair loads a system font face synchronously (through
         // ClearFontAssetData). FontEngine's current face is process
         // global, so a repair re-entered from inside TextCore's own
@@ -92,6 +98,7 @@ namespace Colloid.UitkFontFix
             try
             {
                 _templates.Remove(asset.GetInstanceID());
+                _stampedPageCounts.Remove(asset.GetInstanceID());
             }
             catch (System.Exception)
             {
@@ -197,11 +204,48 @@ namespace Colloid.UitkFontFix
                         pages[i].hideFlags = TransientChildFlags;
                     }
                 }
+                _stampedPageCounts[asset.GetInstanceID()] = used;
             }
             catch (System.Exception)
             {
                 // Protection is best-effort; detection and repair cover
                 // whatever it fails to protect.
+            }
+        }
+
+        /// <summary>
+        /// Stamps only when TextCore added atlas pages since the last
+        /// stamp. Pages are added lazily at render time and are born
+        /// unflagged, and the events that destroy unflagged objects are
+        /// not limited to Play Mode: a new or opened scene does it too,
+        /// with no hook that fires before the damage. A consumer that
+        /// applied the font once and never calls back would leave every
+        /// later page exposed, so this runs from the editor update tick.
+        /// Cheap enough for that: the page count is a managed field, so
+        /// an unchanged asset costs one dictionary lookup and no native
+        /// call. Returns true when it stamped.
+        /// </summary>
+        internal static bool StampNewPages(UnityEngine.TextCore.Text.FontAsset asset)
+        {
+            if (ReferenceEquals(asset, null))
+            {
+                return false;
+            }
+            try
+            {
+                int used = FontShims.GetUsedAtlasPageCount(asset);
+                int last;
+                if (_stampedPageCounts.TryGetValue(asset.GetInstanceID(), out last)
+                    && last >= used)
+                {
+                    return false;
+                }
+                Stamp(asset);
+                return true;
+            }
+            catch (System.Exception)
+            {
+                return false;
             }
         }
 
@@ -237,8 +281,16 @@ namespace Colloid.UitkFontFix
                     return false;
                 }
 
-                if (FontShims.GetMaterial(asset) == null
-                    && !TryRestoreMaterial(asset))
+                // The material is replaced even when it survived. UI
+                // Toolkit regenerates an element's cached text mesh only
+                // when its generation-settings hash changes, and that
+                // hash covers the font asset and its material -- nothing
+                // else about an in-place repair is visible to it. With
+                // the old material kept, every element already drawn
+                // would keep mesh data that points at the dead page and
+                // its next draw would throw again; a new material is the
+                // one signal that makes the next repaint regenerate.
+                if (!TryReplaceMaterial(asset))
                 {
                     return false;
                 }
@@ -295,9 +347,16 @@ namespace Colloid.UitkFontFix
 
         // -- Internals ---------------------------------------------------------
 
-        private static bool TryRestoreMaterial(
+        private static bool TryReplaceMaterial(
             UnityEngine.TextCore.Text.FontAsset asset)
         {
+            // A surviving material is the best template there is; a
+            // destroyed one falls back to the copy taken while it lived.
+            Material previous = FontShims.GetMaterial(asset);
+            if (previous != null)
+            {
+                CaptureMaterialTemplate(asset);
+            }
             MaterialTemplate template;
             if (!_templates.TryGetValue(asset.GetInstanceID(), out template)
                 || template.Shader == null)
@@ -311,6 +370,14 @@ namespace Colloid.UitkFontFix
             material.SetFloat(FontShims.WeightNormalId, template.WeightNormal);
             material.SetFloat(FontShims.WeightBoldId, template.WeightBold);
             FontShims.SetMaterial(asset, material);
+            if (previous != null)
+            {
+                // Installed first, destroyed second: nothing observes a
+                // null material in between. Cached text meshes that still
+                // name the old material are regenerated before their next
+                // draw reads it (the replacement changed their hash).
+                Object.DestroyImmediate(previous);
+            }
             return true;
         }
 
